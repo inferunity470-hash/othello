@@ -7,24 +7,31 @@ import {
   GameOptions,
   GameResult,
   GameState,
-  TurnRecord,
 } from '../core/types';
 import { hasLegalMove } from '../core/board';
 import { BoardView } from './Board';
 import { HUD } from './HUD';
 import { BidPanel } from './BidPanel';
 import { GameLog } from './GameLog';
-import { determineWinner } from '../core/scoring';
+import { BidReveal } from './BidReveal';
+import { ResultCard } from './ResultCard';
 
 interface Props {
   onExit: () => void;
 }
 
-interface OnlineSession {
+interface Session {
   client: PartyClient;
   room: string;
   you: Color | 'SPECTATE';
   opponentName?: string;
+}
+
+interface RevealData {
+  bids: { BLACK: number; WHITE: number };
+  winner: Color;
+  payment: number;
+  tieBroken: boolean;
 }
 
 export function OnlineLobby({ onExit }: Props) {
@@ -33,46 +40,41 @@ export function OnlineLobby({ onExit }: Props) {
   const [code, setCode] = useState<string>('');
   const [options, setOptions] = useState<GameOptions>({ ...DEFAULT_OPTIONS });
   const [status, setStatus] = useState<ConnectionStatus>('idle');
-  const [session, setSession] = useState<OnlineSession | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [state, setState] = useState<GameState | null>(null);
   const [opponentBidIn, setOpponentBidIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GameResult | null>(null);
+  const [reveal, setReveal] = useState<RevealData | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [chatLog, setChatLog] = useState<Array<{ from: Color | 'SPECTATE'; text: string }>>([]);
+  const [chatLog, setChatLog] = useState<
+    Array<{ from: Color | 'SPECTATE'; text: string }>
+  >([]);
   const [chatInput, setChatInput] = useState('');
   const [opponentDown, setOpponentDown] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+
+  const sessionRef = useRef<Session | null>(null);
 
   const showToast = (s: string) => {
     setToast(s);
     setTimeout(() => setToast(null), 2200);
   };
 
-  const startConnection = (
-    onOpen: (client: PartyClient) => void
-  ) => {
-    setError(null);
-    const client = new PartyClient(serverUrl, {
-      onStatus: setStatus,
-      onMessage: (msg: ServerMsg) => handleMessage(msg, client),
-    });
-    client.connect();
-    const wait = setInterval(() => {
-      if ((client as any).ws?.readyState === 1) {
-        clearInterval(wait);
-        onOpen(client);
-      }
-    }, 50);
-    setTimeout(() => clearInterval(wait), 8000);
-  };
-
   const handleMessage = (msg: ServerMsg, client: PartyClient) => {
     if (msg.t === 'ROOM_CREATED') {
-      showToast(`部屋 ${msg.room} を作成しました。コードを共有してください。`);
+      showToast(`部屋 ${msg.room} を作成しました`);
       return;
     }
     if (msg.t === 'JOINED') {
-      setSession({ client, room: msg.room, you: msg.you, opponentName: msg.opponentName });
+      const newSession: Session = {
+        client,
+        room: msg.room,
+        you: msg.you,
+        opponentName: msg.opponentName,
+      };
+      sessionRef.current = newSession;
+      setSession(newSession);
       return;
     }
     if (msg.t === 'STATE') {
@@ -80,29 +82,21 @@ export function OnlineLobby({ onExit }: Props) {
       return;
     }
     if (msg.t === 'BID_RECEIVED') {
-      // Mark opponent as having bid (color is whoever bid)
-      // This is just informational; UI can show "相手が入札完了"
       setOpponentBidIn(true);
       return;
     }
     if (msg.t === 'BID_REVEAL') {
-      const winnerJP = msg.winner === 'BLACK' ? '黒' : '白';
-      showToast(
-        `公開:黒${msg.bids.BLACK} 白${msg.bids.WHITE} → ${winnerJP}が${msg.payment}支払い${
-          msg.tieBroken ? '(同額・トークン移動)' : ''
-        }`
-      );
+      setReveal({
+        bids: msg.bids,
+        winner: msg.winner,
+        payment: msg.payment,
+        tieBroken: msg.tieBroken,
+      });
       setOpponentBidIn(false);
       return;
     }
-    if (msg.t === 'STONE_PLACED') {
-      // Optional: animate flips
-      return;
-    }
-    if (msg.t === 'TURN_RECORDED') {
-      // Already updated by STATE
-      return;
-    }
+    if (msg.t === 'STONE_PLACED') return;
+    if (msg.t === 'TURN_RECORDED') return;
     if (msg.t === 'END') {
       setResult(msg.result);
       return;
@@ -119,7 +113,7 @@ export function OnlineLobby({ onExit }: Props) {
     }
     if (msg.t === 'ERROR') {
       setError(`${msg.code}: ${msg.message}`);
-      showToast(`エラー:${msg.message}`);
+      showToast(`エラー: ${msg.message}`);
       return;
     }
     if (msg.t === 'CHAT') {
@@ -128,151 +122,296 @@ export function OnlineLobby({ onExit }: Props) {
     }
   };
 
+  const startConnection = (onOpen: (client: PartyClient) => void) => {
+    setError(null);
+    const client = new PartyClient(serverUrl, {
+      onStatus: setStatus,
+      onMessage: msg => handleMessage(msg, client),
+    });
+    client.whenOpen(() => onOpen(client));
+    client.connect();
+  };
+
   const handleCreateRoom = () => {
+    if (!name.trim()) {
+      setError('名前を入力してください');
+      return;
+    }
     startConnection(client => {
       client.send({ t: 'CREATE_ROOM', name, options });
     });
   };
 
   const handleJoinRoom = () => {
-    if (!code) return;
+    const cleaned = code.trim().toUpperCase();
+    if (!cleaned) {
+      setError('ルームコードを入力してください');
+      return;
+    }
+    if (!name.trim()) {
+      setError('名前を入力してください');
+      return;
+    }
     startConnection(client => {
-      client.send({ t: 'JOIN', room: code.toUpperCase(), name });
+      client.send({ t: 'JOIN', room: cleaned, name });
     });
   };
 
   const handleBid = (amount: number) => {
-    session?.client.send({ t: 'BID', amount });
+    sessionRef.current?.client.send({ t: 'BID', amount });
   };
 
   const handlePlace = (row: number, col: number) => {
-    session?.client.send({ t: 'PLACE', row, col });
+    sessionRef.current?.client.send({ t: 'PLACE', row, col });
   };
 
   const handleResign = () => {
     if (!confirm('投了しますか?')) return;
-    session?.client.send({ t: 'RESIGN' });
+    sessionRef.current?.client.send({ t: 'RESIGN' });
   };
 
   const handleSendChat = () => {
     if (!chatInput.trim()) return;
-    session?.client.send({ t: 'CHAT', text: chatInput.trim() });
+    sessionRef.current?.client.send({ t: 'CHAT', text: chatInput.trim() });
     setChatInput('');
   };
 
-  // Disconnect cleanup on unmount
+  const handleCopyCode = async () => {
+    if (!session) return;
+    try {
+      await navigator.clipboard.writeText(session.room);
+      showToast(`コード ${session.room} をコピー`);
+    } catch {
+      showToast('コピーに失敗しました');
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!session) return;
+    try {
+      const url = `${window.location.origin}/?room=${session.room}`;
+      await navigator.clipboard.writeText(url);
+      showToast('共有リンクをコピーしました');
+    } catch {
+      showToast('コピーに失敗しました');
+    }
+  };
+
+  // Pre-fill from URL ?room=XXXXXX
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const r = params.get('room');
+    if (r) setCode(r);
+  }, []);
+
   useEffect(() => {
     return () => {
-      session?.client.close();
+      sessionRef.current?.client.close();
     };
-  }, [session]);
+  }, []);
 
-  // No session yet -> show join/create UI
   if (!session) {
     return (
       <div className="lobby">
         <h2>🌐 オンライン対戦</h2>
-        <div className="muted">サーバURL(ローカル開発時は <code>ws://localhost:8787</code>)</div>
-        <input
-          type="text"
-          value={serverUrl}
-          onChange={e => setServerUrl(e.target.value)}
-          placeholder="ws://..."
-        />
-        <input
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="あなたの名前(任意)"
-        />
         <div className="row">
-          <label>初期チップ
-            <input
-              type="number"
-              value={options.initialChips}
-              onChange={e =>
-                setOptions({ ...options, initialChips: parseInt(e.target.value, 10) || 0 })
-              }
-            />
-          </label>
-          <label>角ボーナス
-            <input
-              type="number"
-              value={options.cornerBonus}
-              onChange={e =>
-                setOptions({ ...options, cornerBonus: parseInt(e.target.value, 10) || 0 })
-              }
-            />
-          </label>
+          <span className={`connection-status ${status}`}>
+            <span className="dot" />
+            {connectionLabel(status)}
+          </span>
         </div>
+        <label className="stack">
+          <span>サーバ URL</span>
+          <input
+            type="text"
+            value={serverUrl}
+            onChange={e => setServerUrl(e.target.value)}
+            placeholder="ws://localhost:8787"
+          />
+        </label>
+        <label className="stack">
+          <span>あなたの名前</span>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="例: しん"
+            maxLength={24}
+          />
+        </label>
+        <details>
+          <summary className="muted">ゲームオプション (ルーム作成時)</summary>
+          <div className="row" style={{ marginTop: '0.5rem' }}>
+            <label className="stack">
+              <span>初期チップ</span>
+              <input
+                type="number"
+                value={options.initialChips}
+                onChange={e =>
+                  setOptions({
+                    ...options,
+                    initialChips: parseInt(e.target.value, 10) || 0,
+                  })
+                }
+              />
+            </label>
+            <label className="stack">
+              <span>角ボーナス</span>
+              <input
+                type="number"
+                value={options.cornerBonus}
+                onChange={e =>
+                  setOptions({
+                    ...options,
+                    cornerBonus: parseInt(e.target.value, 10) || 0,
+                  })
+                }
+              />
+            </label>
+            <label className="stack">
+              <span>連続0入札制限</span>
+              <input
+                type="number"
+                value={options.zeroBidStreakLimit ?? ''}
+                placeholder="無制限"
+                onChange={e => {
+                  const v = e.target.value;
+                  setOptions({
+                    ...options,
+                    zeroBidStreakLimit:
+                      v === '' ? null : Math.max(0, parseInt(v, 10) || 0),
+                  });
+                }}
+              />
+            </label>
+          </div>
+        </details>
         <div className="row">
           <button className="primary" onClick={handleCreateRoom}>
-            ルームを作成
+            ➕ ルーム作成
           </button>
           <span className="muted">または</span>
           <input
             type="text"
             value={code}
-            onChange={e => setCode(e.target.value)}
+            onChange={e => setCode(e.target.value.toUpperCase())}
             placeholder="ルームコード"
-            style={{ textTransform: 'uppercase' }}
+            style={{ textTransform: 'uppercase', letterSpacing: '0.18em' }}
+            maxLength={8}
           />
           <button className="primary" onClick={handleJoinRoom}>
-            参加
+            ▶ 参加
           </button>
         </div>
-        {status === 'connecting' && <div>接続中...</div>}
-        {status === 'closed' && <div className="muted">未接続。サーバを起動していますか? (`npm run server`)</div>}
-        {error && <div style={{ color: 'var(--danger)' }}>{error}</div>}
+        {error && (
+          <div style={{ color: 'var(--danger)', fontSize: '0.9rem' }}>⚠️ {error}</div>
+        )}
         <div className="row">
-          <button onClick={onExit}>戻る</button>
+          <button className="ghost" onClick={onExit}>
+            ← 戻る
+          </button>
+          <span className="muted">
+            ローカルで遊ぶ場合は別ターミナルで <code>npm run server</code> を起動。
+          </span>
         </div>
       </div>
     );
   }
 
-  // Game in progress (or waiting for opponent)
+  // In-game view
+  const myTurnToBid =
+    state?.phase === 'BIDDING' &&
+    session.you !== 'SPECTATE' &&
+    state.pendingBids?.[session.you as Color] == null;
+  const youAreSpec = session.you === 'SPECTATE';
+
   return (
     <div className="game">
       <div className="board-wrap">
         {state ? (
           <BoardView
             state={state}
-            showLegalForColor={canPlace(state, session.you) ? (session.you as Color) : null}
+            showLegalForColor={
+              !youAreSpec && canPlace(state, session.you)
+                ? (session.you as Color)
+                : null
+            }
             onCellClick={handlePlace}
-            showHeatmap={state.phase === 'ENDED'}
+            showHeatmap={showHeatmap || state.phase === 'ENDED'}
           />
         ) : (
           <div className="bid-panel">対局開始を待機中...</div>
         )}
         <div className="row">
-          <button onClick={() => { session.client.close(); onExit(); }}>退室</button>
-          {session.you !== 'SPECTATE' && state?.phase !== 'ENDED' && (
-            <button onClick={handleResign} style={{ background: 'var(--danger)' }}>
-              投了
+          <button
+            onClick={() => {
+              sessionRef.current?.client.close();
+              onExit();
+            }}
+          >
+            ← 退室
+          </button>
+          {!youAreSpec && state?.phase !== 'ENDED' && (
+            <button className="danger" onClick={handleResign}>
+              🏳️ 投了
             </button>
           )}
-          <span className="muted">
-            ルーム <strong>{session.room}</strong> ・ あなた:{youLabel(session.you)}
-            {opponentDown && ' ・ 相手切断中'}
+          <button
+            className={showHeatmap ? 'primary' : 'ghost'}
+            onClick={() => setShowHeatmap(!showHeatmap)}
+          >
+            🔥 ヒートマップ
+          </button>
+          <span
+            className={`connection-status ${status}`}
+            style={{ marginLeft: 'auto' }}
+          >
+            <span className="dot" />
+            {opponentDown ? '相手切断中' : connectionLabel(status)}
           </span>
         </div>
+
+        <div className="room-code">
+          <span className="muted">ルーム</span>
+          <span className="code">{session.room}</span>
+          <button className="ghost" onClick={handleCopyCode}>
+            📋 コード
+          </button>
+          <button className="ghost" onClick={handleCopyShareLink}>
+            🔗 リンク
+          </button>
+          <span className="muted">あなた: {youLabel(session.you)}</span>
+        </div>
       </div>
+
       <div className="col">
         {state && <HUD state={state} myColor={session.you} />}
-        {state && session.you !== 'SPECTATE' && state.phase === 'BIDDING' && (
-          (state.pendingBids?.[session.you as Color] == null) ? (
-            <BidPanel state={state} color={session.you as Color} onSubmit={handleBid} />
-          ) : (
-            <div className="bid-panel">
-              入札完了。相手の入札を待機中...
-              {opponentBidIn && '相手も入札完了。集計中。'}
-            </div>
-          )
+        {state && myTurnToBid && !reveal && (
+          <BidPanel
+            state={state}
+            color={session.you as Color}
+            onSubmit={handleBid}
+          />
         )}
+        {state &&
+          state.phase === 'BIDDING' &&
+          !youAreSpec &&
+          state.pendingBids?.[session.you as Color] != null &&
+          !reveal && (
+            <div className="bid-panel">
+              <div>
+                ✓ あなたは{' '}
+                <strong>{state.pendingBids?.[session.you as Color]}</strong> を入札しました。
+              </div>
+              <div className="muted">
+                <span className="spinner" />
+                {opponentBidIn ? '集計中...' : '相手の入札を待機中...'}
+              </div>
+            </div>
+          )}
         {state && <GameLog state={state} />}
         {state?.phase === 'ENDED' && result && (
-          <ResultCardForOnline result={result} />
+          <ResultCard state={state} result={result} myColor={session.you} />
         )}
         <ChatPanel
           chatLog={chatLog}
@@ -281,25 +420,39 @@ export function OnlineLobby({ onExit }: Props) {
           setInput={setChatInput}
         />
       </div>
+      {reveal && (
+        <BidReveal
+          bids={reveal.bids}
+          winner={reveal.winner}
+          payment={reveal.payment}
+          tieBroken={reveal.tieBroken}
+          onClose={() => setReveal(null)}
+        />
+      )}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
 
 function publicToLocal(s: PublicGameState): GameState {
-  // pendingBids may include 'HIDDEN'; convert to undefined for the local-shape
   const pb = s.pendingBids;
   const sanitized: any = {};
   if (pb) {
-    if (pb.BLACK !== undefined) sanitized.BLACK = pb.BLACK === 'HIDDEN' ? undefined : pb.BLACK;
-    if (pb.WHITE !== undefined) sanitized.WHITE = pb.WHITE === 'HIDDEN' ? undefined : pb.WHITE;
+    if (pb.BLACK !== undefined)
+      sanitized.BLACK = pb.BLACK === 'HIDDEN' ? undefined : pb.BLACK;
+    if (pb.WHITE !== undefined)
+      sanitized.WHITE = pb.WHITE === 'HIDDEN' ? undefined : pb.WHITE;
   }
   return { ...(s as unknown as GameState), pendingBids: sanitized };
 }
 
 function canPlace(state: GameState, you: Color | 'SPECTATE'): boolean {
   if (you === 'SPECTATE') return false;
-  if (state.phase !== 'PLACING' && state.phase !== 'FREE_MOVE' && state.phase !== 'FINAL_MOVE')
+  if (
+    state.phase !== 'PLACING' &&
+    state.phase !== 'FREE_MOVE' &&
+    state.phase !== 'FINAL_MOVE'
+  )
     return false;
   if (state.phase === 'PLACING') {
     const last = state.history[state.history.length - 1];
@@ -309,37 +462,26 @@ function canPlace(state: GameState, you: Color | 'SPECTATE'): boolean {
     return state.initiativeHolder === you;
   }
   // FREE_MOVE
-  const legal = hasLegalMove(state.board, you);
-  return legal;
+  return hasLegalMove(state.board, you);
 }
 
 function youLabel(y: Color | 'SPECTATE'): string {
-  if (y === 'BLACK') return '黒';
-  if (y === 'WHITE') return '白';
-  return '観戦';
+  if (y === 'BLACK') return '⚫黒';
+  if (y === 'WHITE') return '⚪白';
+  return '👁観戦';
 }
 
-function ResultCardForOnline({ result }: { result: GameResult }) {
-  return (
-    <div className="bid-panel result">
-      <h2>
-        {result.winner === 'DRAW'
-          ? '🤝 引き分け'
-          : `🏆 ${result.winner === 'BLACK' ? '黒' : '白'}の勝利!`}
-      </h2>
-      <div className="score">
-        黒 {result.stones.BLACK} ― {result.stones.WHITE} 白
-      </div>
-      <div className="muted">
-        終局理由:
-        {result.endReason === 'BOTH_NO_MOVES' ? '両者合法手なし' : 'チップ枯渇'}
-        {result.tieBreaker === 'STONES' && ' (石数同数 → 残チップで決着)'}
-      </div>
-      <div className="muted">
-        残チップ:黒 {result.finalChips.BLACK} ・ 白 {result.finalChips.WHITE}
-      </div>
-    </div>
-  );
+function connectionLabel(s: ConnectionStatus): string {
+  switch (s) {
+    case 'idle':
+      return '未接続';
+    case 'connecting':
+      return '接続中...';
+    case 'open':
+      return '接続中';
+    case 'closed':
+      return '切断';
+  }
 }
 
 function ChatPanel({
@@ -353,25 +495,30 @@ function ChatPanel({
   input: string;
   setInput: (s: string) => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [chatLog]);
   return (
     <div className="bid-panel">
-      <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>チャット</div>
-      <div
-        style={{
-          maxHeight: '120px',
-          overflowY: 'auto',
-          fontSize: '0.85rem',
-          background: 'var(--panel-2)',
-          padding: '0.4rem',
-          borderRadius: 4,
-        }}
-      >
-        {chatLog.length === 0 && <span className="muted">まだメッセージはありません</span>}
+      <div style={{ fontSize: '0.95rem', fontWeight: 700 }}>💬 チャット</div>
+      <div className="chat-log" ref={ref}>
+        {chatLog.length === 0 && (
+          <span className="muted">まだメッセージはありません</span>
+        )}
         {chatLog.map((c, i) => (
           <div key={i}>
-            <strong>
-              {c.from === 'BLACK' ? '黒' : c.from === 'WHITE' ? '白' : '観'}:{' '}
-            </strong>
+            <span
+              className={
+                c.from === 'BLACK'
+                  ? 'who-black'
+                  : c.from === 'WHITE'
+                  ? 'who-white'
+                  : 'who-spec'
+              }
+            >
+              {c.from === 'BLACK' ? '⚫' : c.from === 'WHITE' ? '⚪' : '👁'}
+            </span>{' '}
             {c.text}
           </div>
         ))}
@@ -381,11 +528,10 @@ function ChatPanel({
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') onSend();
-          }}
+          onKeyDown={e => e.key === 'Enter' && onSend()}
           style={{ flex: 1 }}
           placeholder="メッセージを入力"
+          maxLength={200}
         />
         <button onClick={onSend}>送信</button>
       </div>

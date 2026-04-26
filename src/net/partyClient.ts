@@ -14,10 +14,20 @@ export class PartyClient {
   private cb: ClientCallbacks;
   private intentionalClose = false;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private onceOpen: Array<() => void> = [];
 
   constructor(url: string, cb: ClientCallbacks) {
     this.url = url;
     this.cb = cb;
+  }
+
+  /** Resolves the next time the socket opens. Useful for "send on connect" flows. */
+  whenOpen(handler: () => void) {
+    if (this.ws && this.ws.readyState === this.ws.OPEN) {
+      handler();
+      return;
+    }
+    this.onceOpen.push(handler);
   }
 
   connect() {
@@ -31,6 +41,14 @@ export class PartyClient {
       this.pingTimer = setInterval(() => {
         this.send({ t: 'PING' });
       }, 25_000);
+      const handlers = this.onceOpen.splice(0);
+      for (const h of handlers) {
+        try {
+          h();
+        } catch (err) {
+          console.error('whenOpen handler failed', err);
+        }
+      }
     };
     ws.onmessage = e => {
       try {
