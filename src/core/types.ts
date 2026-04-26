@@ -8,10 +8,19 @@ export interface PlayerState {
 }
 
 export interface GameOptions {
-  initialChips: number;
+  /**
+   * Initial chip count. Number = symmetric, object = handicap (asymmetric).
+   * Spec §17.1
+   */
+  initialChips: number | { BLACK: number; WHITE: number };
   cornerBonus: number;
   zeroBidStreakLimit: number | null;
   turnTimeoutSec: number | null;
+  /**
+   * Auction format. Default 'first-price' (winner pays own bid).
+   * 'second-price' = Vickrey: winner pays loser's bid. Spec §17.6
+   */
+  auctionType: 'first-price' | 'second-price';
 }
 
 export type GamePhase =
@@ -84,7 +93,14 @@ export const DEFAULT_OPTIONS: GameOptions = {
   cornerBonus: CONFIG.DEFAULT_CORNER_BONUS,
   zeroBidStreakLimit: null,
   turnTimeoutSec: null,
+  auctionType: 'first-price',
 };
+
+export function initialChipsFor(opts: GameOptions, color: Color): number {
+  return typeof opts.initialChips === 'number'
+    ? opts.initialChips
+    : opts.initialChips[color];
+}
 
 export function opponentOf(color: Color): Color {
   return color === 'BLACK' ? 'WHITE' : 'BLACK';

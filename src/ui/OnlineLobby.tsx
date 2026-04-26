@@ -246,7 +246,11 @@ export function OnlineLobby({ onExit }: Props) {
               <span>初期チップ</span>
               <input
                 type="number"
-                value={options.initialChips}
+                value={
+                  typeof options.initialChips === 'number'
+                    ? options.initialChips
+                    : options.initialChips.BLACK
+                }
                 onChange={e =>
                   setOptions({
                     ...options,

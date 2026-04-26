@@ -5,6 +5,7 @@ import {
   GameState,
   PendingBids,
   TurnRecord,
+  initialChipsFor,
   opponentOf,
 } from './types';
 import {
@@ -22,8 +23,8 @@ export function initGame(options?: Partial<GameOptions>): GameState {
   return {
     board,
     players: {
-      BLACK: { color: 'BLACK', chips: opts.initialChips },
-      WHITE: { color: 'WHITE', chips: opts.initialChips },
+      BLACK: { color: 'BLACK', chips: initialChipsFor(opts, 'BLACK') },
+      WHITE: { color: 'WHITE', chips: initialChipsFor(opts, 'WHITE') },
     },
     initiativeHolder: 'BLACK',
     phase: 'BIDDING',

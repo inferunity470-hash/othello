@@ -1,13 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Board, Color, GameState, TurnRecord } from '../core/types';
-import { isCornerSquare, legalMoves } from '../core/board';
+import { getFlips, isCornerSquare, legalMoves } from '../core/board';
 
 interface Props {
   state: GameState;
   showLegalForColor?: Color | null;
   onCellClick?: (row: number, col: number) => void;
   showHeatmap?: boolean;
+  /** Override which cell is highlighted as "last move" (used in replay). */
+  lastMoveOverride?: { row: number; col: number } | null;
+  /** Disable interactions completely (used during preview/replay). */
+  readOnly?: boolean;
+  /** Highlight a single suggested cell (e.g. AI hint). */
+  hintCell?: { row: number; col: number } | null;
+  /** Hide the file/rank labels around the board. */
+  hideLabels?: boolean;
 }
+
+const FILES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const RANKS = ['1', '2', '3', '4', '5', '6', '7', '8'];
 
 interface CellMeta {
   cost?: number;
@@ -56,30 +67,35 @@ function lastMoveCell(history: TurnRecord[]): { row: number; col: number } | nul
   return null;
 }
 
-function lastFlipsSet(history: TurnRecord[]): Set<string> {
-  const last = history[history.length - 1];
-  if (!last?.flipped) return new Set();
-  return new Set(last.flipped.map(([r, c]) => `${r},${c}`));
-}
-
 export function BoardView({
   state,
   showLegalForColor,
   onCellClick,
   showHeatmap,
+  lastMoveOverride,
+  readOnly,
+  hintCell,
+  hideLabels,
 }: Props) {
-  const moves = showLegalForColor
-    ? new Set(
-        legalMoves(state.board, showLegalForColor).map(m => `${m.row},${m.col}`)
-      )
-    : new Set<string>();
+  // Memoize legal moves so we don't recompute on every hover/animation tick.
+  const moves = useMemo(() => {
+    if (!showLegalForColor || readOnly) return new Set<string>();
+    return new Set(
+      legalMoves(state.board, showLegalForColor).map(m => `${m.row},${m.col}`)
+    );
+  }, [state.board, showLegalForColor, readOnly]);
 
-  const heatmap = showHeatmap ? buildHeatmap(state.history) : null;
-  const last = lastMoveCell(state.history);
-  const lastFlips = lastFlipsSet(state.history);
+  const heatmap = useMemo(
+    () => (showHeatmap ? buildHeatmap(state.history) : null),
+    [showHeatmap, state.history]
+  );
+  const last = lastMoveOverride !== undefined
+    ? lastMoveOverride
+    : lastMoveCell(state.history);
   const [hover, setHover] = useState<HoverDetail | null>(null);
+  const [hoverFlips, setHoverFlips] = useState<Set<string>>(new Set());
 
-  // Track which cells just changed to drive flip animations
+  // Animation tracking
   const prevBoardRef = useRef<Board | null>(null);
   const [animFlips, setAnimFlips] = useState<Set<string>>(new Set());
   const [animPlace, setAnimPlace] = useState<string | null>(null);
@@ -115,9 +131,86 @@ export function BoardView({
     return () => clearTimeout(t);
   }, [state.board]);
 
+  // Keyboard navigation
+  const [focus, setFocus] = useState<{ row: number; col: number } | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+
+  const handleCellHover = (r: number, c: number) => {
+    const key = `${r},${c}`;
+    const meta = heatmap?.get(key);
+    if (meta) setHover({ row: r, col: c, meta });
+    // Show flip preview if this is a legal move
+    if (showLegalForColor && moves.has(key) && !readOnly) {
+      const flips = getFlips(state.board, showLegalForColor, r, c);
+      setHoverFlips(new Set(flips.map(([fr, fc]) => `${fr},${fc}`)));
+    } else {
+      setHoverFlips(new Set());
+    }
+  };
+
+  const handleCellLeave = () => {
+    setHover(null);
+    setHoverFlips(new Set());
+  };
+
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLDivElement>,
+    r: number,
+    c: number
+  ) => {
+    let nr = r;
+    let nc = c;
+    switch (e.key) {
+      case 'ArrowUp':
+        nr = Math.max(0, r - 1);
+        break;
+      case 'ArrowDown':
+        nr = Math.min(7, r + 1);
+        break;
+      case 'ArrowLeft':
+        nc = Math.max(0, c - 1);
+        break;
+      case 'ArrowRight':
+        nc = Math.min(7, c + 1);
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (moves.has(`${r},${c}`)) onCellClick?.(r, c);
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    setFocus({ row: nr, col: nc });
+    const next = boardRef.current?.querySelector<HTMLDivElement>(
+      `[data-row="${nr}"][data-col="${nc}"]`
+    );
+    next?.focus();
+  };
+
   return (
     <div className="board-frame">
-      <div className="board" role="grid" aria-label="オセロ盤">
+      {!hideLabels && (
+        <>
+          <div className="board-files" aria-hidden="true">
+            {FILES.map(f => (
+              <span key={f}>{f}</span>
+            ))}
+          </div>
+          <div className="board-ranks" aria-hidden="true">
+            {RANKS.map(r => (
+              <span key={r}>{r}</span>
+            ))}
+          </div>
+        </>
+      )}
+      <div
+        className="board"
+        role="grid"
+        aria-label="オセロ盤"
+        ref={boardRef}
+      >
         {state.board.map((row, r) =>
           row.map((cell, c) => {
             const key = `${r},${c}`;
@@ -128,32 +221,41 @@ export function BoardView({
             const dark = (r + c) % 2 === 1;
             const isFlipping = animFlips.has(key);
             const isPlaced = animPlace === key;
+            const willFlip = hoverFlips.has(key);
+            const isHint =
+              hintCell && hintCell.row === r && hintCell.col === c;
             return (
               <div
                 key={key}
                 role="gridcell"
                 aria-label={cellLabel(r, c, cell)}
+                data-row={r}
+                data-col={c}
+                tabIndex={isLegal ? 0 : -1}
+                onKeyDown={e => handleKeyDown(e, r, c)}
                 className={[
                   'cell',
                   dark ? 'dark' : '',
                   corner ? 'corner' : '',
                   isLegal ? 'legal legal-hint' : '',
                   isLast ? 'last-move' : '',
+                  willFlip ? 'will-flip' : '',
+                  isHint ? 'hint' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                onClick={() => isLegal && onCellClick?.(r, c)}
-                onMouseEnter={() =>
-                  meta && setHover({ row: r, col: c, meta })
-                }
-                onMouseLeave={() => setHover(null)}
+                onClick={() => isLegal && !readOnly && onCellClick?.(r, c)}
+                onMouseEnter={() => handleCellHover(r, c)}
+                onMouseLeave={handleCellLeave}
+                onFocus={() => handleCellHover(r, c)}
+                onBlur={handleCellLeave}
               >
                 {cell && (
                   <div className="disc-holder">
                     <div
                       className={`disc ${cell === 'BLACK' ? 'black' : 'white'} ${
                         isFlipping ? 'flipping' : ''
-                      } ${isPlaced ? 'placed' : ''}`}
+                      } ${isPlaced ? 'placed' : ''} ${willFlip ? 'will-flip' : ''}`}
                       aria-hidden="true"
                     >
                       <span className="disc-mark">
@@ -172,19 +274,14 @@ export function BoardView({
                     無
                   </span>
                 )}
-                {hover &&
-                  hover.row === r &&
-                  hover.col === c &&
-                  meta && (
-                    <div className="heatmap-tooltip" role="tooltip">
-                      ターン {meta.turnNo} ・{' '}
-                      {meta.byColor === 'BLACK' ? '黒' : '白'}{' '}
-                      {meta.cost != null
-                        ? `落札 ${meta.cost}`
-                        : '無償着手'}{' '}
-                      ・ 反転 {meta.flips ?? 0}
-                    </div>
-                  )}
+                {hover && hover.row === r && hover.col === c && meta && (
+                  <div className="heatmap-tooltip" role="tooltip">
+                    ターン {meta.turnNo} ・{' '}
+                    {meta.byColor === 'BLACK' ? '黒' : '白'}{' '}
+                    {meta.cost != null ? `落札 ${meta.cost}` : '無償着手'} ・ 反転{' '}
+                    {meta.flips ?? 0}
+                  </div>
+                )}
               </div>
             );
           })

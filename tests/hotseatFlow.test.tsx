@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import React from 'react';
 import { render, fireEvent, act, waitFor } from '@testing-library/react';
 import { App } from '../src/ui/App';
@@ -13,6 +13,10 @@ beforeAll(() => {
     if (msg.includes('Could not parse CSS')) return;
     return undefined;
   });
+});
+
+beforeEach(() => {
+  try { localStorage.clear(); } catch { /* ignore */ }
 });
 
 /**
@@ -53,7 +57,7 @@ describe('hotseat flow (jsdom)', () => {
     expect(queryByText(/入札公開/)).toBeTruthy();
     // Close reveal
     await act(async () => {
-      fireEvent.click(getByText('閉じる'));
+      fireEvent.click(getByText(/閉じる/));
     });
     // Then a pre-place handoff should appear
     expect(queryByText(/着手フェーズ/)).toBeTruthy();

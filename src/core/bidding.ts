@@ -11,23 +11,27 @@ export function resolveBids(
   state: GameState,
   bids: { BLACK: number; WHITE: number }
 ): BidResolution {
+  const second = state.options.auctionType === 'second-price';
   if (bids.BLACK > bids.WHITE) {
+    // BLACK wins
     return {
       winner: 'BLACK',
-      payment: bids.BLACK,
+      payment: second ? bids.WHITE : bids.BLACK,
       tieBroken: false,
       newInitiativeHolder: state.initiativeHolder,
     };
   }
   if (bids.WHITE > bids.BLACK) {
+    // WHITE wins
     return {
       winner: 'WHITE',
-      payment: bids.WHITE,
+      payment: second ? bids.BLACK : bids.WHITE,
       tieBroken: false,
       newInitiativeHolder: state.initiativeHolder,
     };
   }
-  // tie
+  // Tie -> token holder wins, payment = both bids (they are equal).
+  // Token transfers to opponent.
   const winner = state.initiativeHolder;
   return {
     winner,

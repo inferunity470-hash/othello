@@ -1,4 +1,5 @@
-:root {
+:root,
+:root[data-theme="dark"] {
   --bg-1: #0d1220;
   --bg-2: #151b2c;
   --panel: #1c2438;
@@ -22,6 +23,27 @@
   font-family: ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme="light"] {
+  --bg-1: #f5f5f8;
+  --bg-2: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #f0f2f8;
+  --panel-3: #e2e6f0;
+  --text: #1f2438;
+  --muted: #6b7385;
+  --accent: #d68500;
+  --accent-2: #e29a26;
+  --board-bg: #2f9c4d;
+  --board-bg-2: #237a3a;
+  --board-line: #1d5e2a;
+  --legal: #d6a800;
+  --legal-glow: rgba(214, 168, 0, 0.55);
+  --danger: #c0392b;
+  --good: #1e8449;
+  --info: #2980b9;
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
 }
 
 * {
@@ -235,18 +257,65 @@ label.stack {
     inset 0 0 30px rgba(0, 0, 0, 0.45),
     0 8px 28px rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(0, 0, 0, 0.4);
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-rows: 18px minmax(0, 1fr);
+  gap: 4px;
+}
+
+:root[data-theme="light"] .board-frame {
+  background: radial-gradient(ellipse at center, #4ab266, #2c8240 70%, #1d5e2a);
+}
+
+.board-files,
+.board-ranks {
+  display: grid;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  user-select: none;
+}
+
+:root[data-theme="light"] .board-files,
+:root[data-theme="light"] .board-ranks {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.board-files {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+  grid-template-columns: repeat(8, 1fr);
+  text-align: center;
+  align-items: end;
+  padding: 0 2px;
+}
+
+.board-ranks {
+  grid-column: 1 / 2;
+  grid-row: 2 / 3;
+  grid-template-rows: repeat(8, 1fr);
+  text-align: right;
+  padding-right: 4px;
+}
+
+.board-ranks span,
+.board-files span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .board {
+  grid-column: 2 / 3;
+  grid-row: 2 / 3;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 2px;
   aspect-ratio: 1 / 1;
   width: 100%;
-  max-width: 580px;
   user-select: none;
   position: relative;
-  background: #0e3618;
+  background: var(--board-line);
   padding: 2px;
   border-radius: 6px;
 }
@@ -321,9 +390,31 @@ label.stack {
   50%      { transform: scale(1.18); opacity: 1.0; }
 }
 
-.cell.legal-hint:hover::after {
+.cell.legal-hint:hover::after,
+.cell.legal-hint:focus-visible::after {
   background: rgba(255, 235, 59, 0.8);
   transform: scale(1.25);
+}
+
+.cell:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Will-flip preview */
+.cell.will-flip {
+  background: linear-gradient(135deg, #2da152 0%, #1a6c33 100%) !important;
+}
+
+.disc.will-flip {
+  animation: willFlipPulse 0.9s ease-in-out infinite;
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+@keyframes willFlipPulse {
+  0%, 100% { opacity: 0.7; transform: scale(0.94); }
+  50%      { opacity: 1.0; transform: scale(1.02); }
 }
 
 /* Disc with 3D flip animation */
@@ -1004,4 +1095,137 @@ label.stack {
   .quick-bid-grid { grid-template-columns: repeat(3, 1fr); }
   .bid-reveal-side { font-size: 1.4rem; padding: 0.5rem 0.8rem; }
   .result .score { font-size: 1.8rem; }
+}
+
+/* Reduced motion respect */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
+}
+
+/* Color-blind / high-contrast mode (data-cb attribute on root) */
+:root[data-cb="on"] .disc.black {
+  background: #000 !important;
+  border: 3px solid #ffd166 !important;
+}
+:root[data-cb="on"] .disc.white {
+  background: #fff !important;
+  border: 3px solid #4dadff !important;
+}
+:root[data-cb="on"] .disc-mark {
+  font-size: 0.95rem !important;
+  font-weight: 800;
+}
+:root[data-cb="on"] .disc.black .disc-mark { color: #ffd166 !important; }
+:root[data-cb="on"] .disc.white .disc-mark { color: #1f2438 !important; }
+:root[data-cb="on"] .swatch.black { border: 3px solid #ffd166 !important; }
+:root[data-cb="on"] .swatch.white { border: 3px solid #4dadff !important; }
+:root[data-cb="on"] .cell.legal-hint::after {
+  background: #ffd166 !important;
+  border-color: #ff6b35 !important;
+}
+
+/* Chip change pulse */
+.chip-pulse-up {
+  animation: chipPulseUp 0.65s ease-out;
+}
+.chip-pulse-down {
+  animation: chipPulseDown 0.65s ease-out;
+}
+
+@keyframes chipPulseUp {
+  0%   { color: var(--good); transform: scale(1.0); }
+  40%  { color: var(--good); transform: scale(1.4); text-shadow: 0 0 12px var(--good); }
+  100% { color: inherit; transform: scale(1.0); text-shadow: none; }
+}
+
+@keyframes chipPulseDown {
+  0%   { color: var(--danger); transform: scale(1.0); }
+  40%  { color: var(--danger); transform: scale(1.3); text-shadow: 0 0 12px var(--danger); }
+  100% { color: inherit; transform: scale(1.0); text-shadow: none; }
+}
+
+.chip-delta {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  animation: deltaFloat 0.9s ease-out forwards;
+  pointer-events: none;
+}
+
+.chip-delta.plus {
+  color: var(--good);
+  background: rgba(46, 204, 113, 0.15);
+}
+
+.chip-delta.minus {
+  color: var(--danger);
+  background: rgba(231, 76, 60, 0.15);
+}
+
+@keyframes deltaFloat {
+  0%   { transform: translateY(0); opacity: 0; }
+  20%  { transform: translateY(-2px); opacity: 1; }
+  100% { transform: translateY(-12px); opacity: 0; }
+}
+
+/* Hint indicator on board cell */
+.cell.hint::after {
+  content: "" !important;
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  background: rgba(79, 195, 247, 0.18) !important;
+  border: 3px solid var(--info) !important;
+  pointer-events: none;
+  animation: hintPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes hintPulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(79, 195, 247, 0.0); }
+  50%      { box-shadow: 0 0 16px rgba(79, 195, 247, 0.7); }
+}
+
+/* Tour spotlight */
+.tour-card {
+  text-align: left !important;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.tour-card .step-pill {
+  display: inline-block;
+  background: var(--accent);
+  color: #2a1c00;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.tour-card h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+/* Replay grid responsive */
+@media (max-width: 700px) {
+  .replay-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }

@@ -14,7 +14,6 @@ import {
   GameState,
 } from '../core/types';
 import { hasLegalMove } from '../core/board';
-import { rewindTo } from '../core/events';
 import { BoardView } from './Board';
 import { HUD } from './HUD';
 import { BidPanel } from './BidPanel';
@@ -23,8 +22,10 @@ import { HandoffOverlay } from './HandoffOverlay';
 import { BidReveal } from './BidReveal';
 import { ResultCard } from './ResultCard';
 import { HelpOverlay } from './HelpOverlay';
+import { Tour, shouldShowTour } from './Tour';
 import { AILevel, decideBid, decideMove } from '../core/ai';
 import { OnlineLobby } from './OnlineLobby';
+import { saveGame, loadGame, clearSave, getPref, setPref } from './storage';
 
 type Mode =
   | { kind: 'lobby' }
@@ -40,6 +41,32 @@ type Mode =
 export function App() {
   const [mode, setMode] = useState<Mode>({ kind: 'lobby' });
   const [help, setHelp] = useState(false);
+  const [tour, setTour] = useState(false);
+  const [colorBlind, setColorBlind] = useState<boolean>(
+    () => getPref('cb', 'off') === 'on'
+  );
+  const [reducedMotion, setReducedMotion] = useState<boolean>(
+    () => getPref('motion', 'auto') === 'reduced'
+  );
+
+  // First-time tour
+  useEffect(() => {
+    if (shouldShowTour()) setTour(true);
+  }, []);
+
+  // Apply prefs to the document root
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.cb = colorBlind ? 'on' : 'off';
+    setPref('cb', colorBlind ? 'on' : 'off');
+  }, [colorBlind]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (reducedMotion) root.dataset.motion = 'reduced';
+    else delete root.dataset.motion;
+    setPref('motion', reducedMotion ? 'reduced' : 'auto');
+  }, [reducedMotion]);
 
   return (
     <div className="app">
@@ -48,7 +75,35 @@ export function App() {
           <span className="accent">⚫⚪</span> ビッド式オセロ
         </h1>
         <div className="row" style={{ gap: '0.4rem' }}>
-          <button className="ghost" onClick={() => setHelp(true)} aria-label="ヘルプ">
+          <button
+            className={colorBlind ? 'primary' : 'ghost'}
+            onClick={() => setColorBlind(b => !b)}
+            aria-pressed={colorBlind}
+            title="色覚配慮モード(高コントラスト・縁取り)"
+          >
+            🎨 色覚配慮
+          </button>
+          <button
+            className={reducedMotion ? 'primary' : 'ghost'}
+            onClick={() => setReducedMotion(m => !m)}
+            aria-pressed={reducedMotion}
+            title="アニメーションを抑える"
+          >
+            🐢 動き軽減
+          </button>
+          <button
+            className="ghost"
+            onClick={() => setTour(true)}
+            aria-label="チュートリアル"
+            title="チュートリアル"
+          >
+            🎓 ツアー
+          </button>
+          <button
+            className="ghost"
+            onClick={() => setHelp(true)}
+            aria-label="ヘルプ"
+          >
             ❓ ルール
           </button>
         </div>
@@ -76,6 +131,7 @@ export function App() {
         <OnlineLobby onExit={() => setMode({ kind: 'lobby' })} />
       )}
       {help && <HelpOverlay onClose={() => setHelp(false)} />}
+      {tour && <Tour onClose={() => setTour(false)} />}
     </div>
   );
 }
@@ -118,7 +174,11 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
             type="number"
             min={1}
             max={1000}
-            value={options.initialChips}
+            value={
+              typeof options.initialChips === 'number'
+                ? options.initialChips
+                : options.initialChips.BLACK
+            }
             onChange={e =>
               setOptions({
                 ...options,
@@ -244,14 +304,44 @@ interface RevealData {
 }
 
 function LocalGame({ options, onExit }: LocalGameProps) {
-  const [state, setState] = useState<GameState>(() => initGame(options));
-  const [bidStep, setBidStep] = useState<Color>('BLACK');
-  const [handoff, setHandoff] = useState<Handoff>({
-    kind: 'pre-bid',
-    color: 'BLACK',
+  // Try to restore a saved hotseat game; otherwise start fresh.
+  const [state, setState] = useState<GameState>(() => {
+    const saved = loadGame('hotseat');
+    if (saved && saved.phase !== 'ENDED') return saved;
+    return initGame(options);
   });
+  const [bidStep, setBidStep] = useState<Color>(() => {
+    // If we restored mid-bid, figure out who's up next.
+    if (state.phase === 'BIDDING') {
+      if (state.pendingBids?.BLACK == null) return 'BLACK';
+      return 'WHITE';
+    }
+    return 'BLACK';
+  });
+  const [handoff, setHandoff] = useState<Handoff>(() =>
+    state.phase === 'BIDDING'
+      ? {
+          kind: 'pre-bid',
+          color: state.pendingBids?.BLACK == null ? 'BLACK' : 'WHITE',
+        }
+      : state.phase === 'PLACING' ||
+        state.phase === 'FREE_MOVE' ||
+        state.phase === 'FINAL_MOVE'
+      ? { kind: 'pre-place' }
+      : { kind: 'idle' }
+  );
   const [reveal, setReveal] = useState<RevealData | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [restored] = useState<boolean>(state.history.length > 0);
+
+  // Auto-save on every state change (debounced via React batching).
+  useEffect(() => {
+    if (state.phase === 'ENDED') {
+      clearSave('hotseat');
+    } else {
+      saveGame('hotseat', state);
+    }
+  }, [state]);
 
   const handleBid = (color: Color, amount: number) => {
     const next = setPendingBid(state, color, amount);
@@ -340,6 +430,7 @@ function LocalGame({ options, onExit }: LocalGameProps) {
             <button
               className="primary"
               onClick={() => {
+                clearSave('hotseat');
                 setState(initGame(options));
                 setBidStep('BLACK');
                 setHandoff({ kind: 'pre-bid', color: 'BLACK' });
@@ -348,6 +439,11 @@ function LocalGame({ options, onExit }: LocalGameProps) {
             >
               🔄 新しい対局
             </button>
+          )}
+          {restored && state.phase !== 'ENDED' && (
+            <span className="pill good" title="自動保存から復元">
+              💾 復元済み
+            </span>
           )}
         </div>
       </div>
@@ -414,11 +510,33 @@ interface AIGameProps {
 }
 
 function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
-  const [state, setState] = useState<GameState>(() => initGame(options));
+  const slot = `vs-ai:${aiColor}:${level}`;
+  const [state, setState] = useState<GameState>(() => {
+    const saved = loadGame(slot);
+    if (saved && saved.phase !== 'ENDED') return saved;
+    return initGame(options);
+  });
   const [thinking, setThinking] = useState(false);
   const [reveal, setReveal] = useState<RevealData | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [hint, setHint] = useState<{ row: number; col: number } | null>(null);
+  const [hintBusy, setHintBusy] = useState(false);
+  const [restored] = useState<boolean>(state.history.length > 0);
   const humanColor: Color = aiColor === 'BLACK' ? 'WHITE' : 'BLACK';
+
+  // Auto-save / clear on end
+  useEffect(() => {
+    if (state.phase === 'ENDED') {
+      clearSave(slot);
+    } else {
+      saveGame(slot, state);
+    }
+  }, [state, slot]);
+
+  // Clear hint whenever the state advances (it's stale).
+  useEffect(() => {
+    setHint(null);
+  }, [state.history.length, state.phase]);
   // Latch to prevent StrictMode double-trigger from running AI logic twice
   // for the same logical state. Reset whenever phase or pendingBids change.
   const aiActedKeyRef = useRef<string | null>(null);
@@ -517,22 +635,36 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
   const placer = expectedMover(state);
   const myTurnToBid =
     state.phase === 'BIDDING' && state.pendingBids?.[humanColor] == null;
+  const myTurnToPlace =
+    (state.phase === 'PLACING' ||
+      state.phase === 'FREE_MOVE' ||
+      state.phase === 'FINAL_MOVE') &&
+    placer === humanColor;
+
+  const requestHint = async () => {
+    if (!myTurnToPlace || hintBusy) return;
+    setHintBusy(true);
+    // Defer compute so the spinner renders.
+    await new Promise(r => setTimeout(r, 30));
+    try {
+      const m = decideMove(state, humanColor, level);
+      setHint(m);
+    } catch (err) {
+      console.warn('hint failed', err);
+    } finally {
+      setHintBusy(false);
+    }
+  };
 
   return (
     <div className="game">
       <div className="board-wrap">
         <BoardView
           state={state}
-          showLegalForColor={
-            (state.phase === 'PLACING' ||
-              state.phase === 'FREE_MOVE' ||
-              state.phase === 'FINAL_MOVE') &&
-            placer === humanColor
-              ? humanColor
-              : null
-          }
+          showLegalForColor={myTurnToPlace ? humanColor : null}
           onCellClick={handleHumanPlace}
           showHeatmap={showHeatmap || state.phase === 'ENDED'}
+          hintCell={hint}
         />
         <div className="row">
           <button onClick={onExit}>← ロビー</button>
@@ -542,17 +674,35 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
           >
             🔥 ヒートマップ
           </button>
+          {myTurnToPlace && (
+            <button
+              className="ghost"
+              onClick={requestHint}
+              disabled={hintBusy}
+              title="同じ難度のAIにあなたの手番を1手だけ提案させる"
+            >
+              {hintBusy && <span className="spinner" />}
+              💡 ヒント
+            </button>
+          )}
           {state.phase === 'ENDED' && (
             <button
               className="primary"
               onClick={() => {
+                clearSave(slot);
                 setState(initGame(options));
                 aiActedKeyRef.current = null;
                 setShowHeatmap(false);
+                setHint(null);
               }}
             >
               🔄 もう一局
             </button>
+          )}
+          {restored && state.phase !== 'ENDED' && (
+            <span className="pill good" title="自動保存から復元">
+              💾 復元済み
+            </span>
           )}
           <span className="muted" style={{ marginLeft: 'auto' }}>
             あなた: {humanColor === 'BLACK' ? '⚫黒' : '⚪白'} ・ NPC: {aiColor === 'BLACK' ? '⚫黒' : '⚪白'}{' '}

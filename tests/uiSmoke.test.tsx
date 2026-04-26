@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import React from 'react';
 import { render, fireEvent, cleanup } from '@testing-library/react';
 import { App } from '../src/ui/App';
@@ -22,6 +22,10 @@ beforeAll(() => {
     if (msg.includes('Could not parse CSS')) return;
     return undefined;
   });
+});
+
+beforeEach(() => {
+  try { localStorage.clear(); } catch { /* ignore */ }
 });
 
 describe('UI smoke (jsdom)', () => {
@@ -91,7 +95,7 @@ describe('UI smoke (jsdom)', () => {
     );
     expect(getByLabelText(/黒の入札 30/)).toBeTruthy();
     expect(getByLabelText(/白の入札 20/)).toBeTruthy();
-    fireEvent.click(getByText('閉じる'));
+    fireEvent.click(getByText(/閉じる/));
     expect(onClose).toHaveBeenCalled();
     unmount();
   });

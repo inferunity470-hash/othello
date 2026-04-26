@@ -1,5 +1,5 @@
-import React from 'react';
-import { Color, GameState } from '../core/types';
+import React, { useEffect, useRef, useState } from 'react';
+import { Color, GameState, initialChipsFor } from '../core/types';
 import { countStones } from '../core/board';
 import { currentMinBid } from '../core/bidding';
 import { expectedMover } from '../core/gameLoop';
@@ -8,11 +8,11 @@ interface Props {
   state: GameState;
   myColor?: Color | 'SPECTATE';
   rightAccessory?: React.ReactNode;
+  showElapsed?: boolean;
 }
 
-export function HUD({ state, myColor, rightAccessory }: Props) {
+export function HUD({ state, myColor, rightAccessory, showElapsed = true }: Props) {
   const stones = countStones(state.board);
-  const total = state.options.initialChips || 1;
   const mover = expectedMover(state);
   const minBid = currentMinBid(state);
   return (
@@ -24,7 +24,7 @@ export function HUD({ state, myColor, rightAccessory }: Props) {
         color="BLACK"
         state={state}
         stones={stones.BLACK}
-        max={total}
+        max={initialChipsFor(state.options, 'BLACK')}
         active={isActive(state, 'BLACK', mover)}
         isMe={myColor === 'BLACK'}
       />
@@ -32,12 +32,17 @@ export function HUD({ state, myColor, rightAccessory }: Props) {
         color="WHITE"
         state={state}
         stones={stones.WHITE}
-        max={total}
+        max={initialChipsFor(state.options, 'WHITE')}
         active={isActive(state, 'WHITE', mover)}
         isMe={myColor === 'WHITE'}
       />
       <div className="meta-row">
         <span className="pill">手番 {state.history.length + 1}</span>
+        {showElapsed && (
+          <span className="pill" title="対局経過時間">
+            ⏱ <ElapsedTimer startedAt={state.startedAt} endedAt={state.endedAt} />
+          </span>
+        )}
         {state.options.zeroBidStreakLimit != null && (
           <span
             className={`pill ${
@@ -50,6 +55,9 @@ export function HUD({ state, myColor, rightAccessory }: Props) {
         {minBid > 0 && state.phase === 'BIDDING' && (
           <span className="pill warn">最小入札 {minBid}</span>
         )}
+        {state.options.auctionType === 'second-price' && (
+          <span className="pill">セカンドプライス</span>
+        )}
         {rightAccessory}
       </div>
     </div>
@@ -58,7 +66,11 @@ export function HUD({ state, myColor, rightAccessory }: Props) {
 
 function isActive(state: GameState, color: Color, mover: Color | null): boolean {
   if (state.phase === 'BIDDING') return true;
-  if (state.phase === 'PLACING' || state.phase === 'FREE_MOVE' || state.phase === 'FINAL_MOVE')
+  if (
+    state.phase === 'PLACING' ||
+    state.phase === 'FREE_MOVE' ||
+    state.phase === 'FINAL_MOVE'
+  )
     return mover === color;
   return false;
 }
@@ -81,6 +93,25 @@ function PlayerCard({
   const chips = state.players[color].chips;
   const pct = Math.min(100, Math.round((chips / Math.max(max, 1)) * 100));
   const hasToken = state.initiativeHolder === color;
+
+  // Track chip changes to flash a delta indicator
+  const prevChipsRef = useRef<number>(chips);
+  const [delta, setDelta] = useState<number | null>(null);
+  const [pulseClass, setPulseClass] = useState<string>('');
+  useEffect(() => {
+    const diff = chips - prevChipsRef.current;
+    prevChipsRef.current = chips;
+    if (diff !== 0) {
+      setDelta(diff);
+      setPulseClass(diff > 0 ? 'chip-pulse-up' : 'chip-pulse-down');
+      const t = setTimeout(() => {
+        setDelta(null);
+        setPulseClass('');
+      }, 900);
+      return () => clearTimeout(t);
+    }
+  }, [chips]);
+
   return (
     <div
       className={`player-card ${active ? 'active' : ''}`}
@@ -104,7 +135,12 @@ function PlayerCard({
         </div>
         <div className="chip-row">
           <span style={{ minWidth: '3.2rem' }}>
-            <strong>{chips}</strong> chip
+            <strong className={pulseClass}>{chips}</strong> chip
+            {delta != null && (
+              <span className={`chip-delta ${delta > 0 ? 'plus' : 'minus'}`}>
+                {delta > 0 ? `+${delta}` : delta}
+              </span>
+            )}
           </span>
           <div className="chip-bar" aria-hidden="true">
             <div className="chip-fill" style={{ width: `${pct}%` }} />
@@ -113,6 +149,26 @@ function PlayerCard({
       </div>
     </div>
   );
+}
+
+function ElapsedTimer({
+  startedAt,
+  endedAt,
+}: {
+  startedAt: number;
+  endedAt?: number;
+}) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (endedAt) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [endedAt]);
+  const ms = (endedAt ?? now) - startedAt;
+  const secs = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return <>{`${m}:${String(s).padStart(2, '0')}`}</>;
 }
 
 function phaseClass(p: GameState['phase']): string {
