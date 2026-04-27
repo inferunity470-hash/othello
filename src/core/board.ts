@@ -1,9 +1,14 @@
 import { Board, Cell, Color, CONFIG, opponentOf } from './types';
 
 const DIRECTIONS: Array<[number, number]> = [
-  [-1, -1], [-1, 0], [-1, 1],
-  [0, -1],           [0, 1],
-  [1, -1],  [1, 0],  [1, 1],
+  [-1, -1],
+  [-1, 0],
+  [-1, 1],
+  [0, -1],
+  [0, 1],
+  [1, -1],
+  [1, 0],
+  [1, 1],
 ];
 
 export function createInitialBoard(): Board {
@@ -21,7 +26,7 @@ export function createInitialBoard(): Board {
 }
 
 export function cloneBoard(board: Board): Board {
-  return board.map((row) => row.slice());
+  return board.map(row => row.slice());
 }
 
 export function inBounds(row: number, col: number): boolean {
@@ -132,11 +137,7 @@ export function countStones(board: Board): { BLACK: number; WHITE: number } {
   return { BLACK: b, WHITE: w };
 }
 
-export function detectCornerGain(
-  before: Board,
-  after: Board,
-  mover: Color
-): number {
+export function detectCornerGain(before: Board, after: Board, mover: Color): number {
   let count = 0;
   for (const [r, c] of CONFIG.CORNER_SQUARES) {
     if (before[r][c] !== mover && after[r][c] === mover) count++;

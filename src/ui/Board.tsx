@@ -90,9 +90,8 @@ export function BoardView({
     () => (showHeatmap ? buildHeatmap(state.history) : null),
     [showHeatmap, state.history]
   );
-  const last = lastMoveOverride !== undefined
-    ? lastMoveOverride
-    : lastMoveCell(state.history);
+  const last =
+    lastMoveOverride !== undefined ? lastMoveOverride : lastMoveCell(state.history);
   const [hover, setHover] = useState<HoverDetail | null>(null);
   const [hoverFlips, setHoverFlips] = useState<Set<string>>(new Set());
 
@@ -214,12 +213,7 @@ export function BoardView({
           </div>
         </>
       )}
-      <div
-        className="board"
-        role="grid"
-        aria-label="オセロ盤"
-        ref={boardRef}
-      >
+      <div className="board" role="grid" aria-label="オセロ盤" ref={boardRef}>
         {state.board.map((row, r) =>
           row.map((cell, c) => {
             const key = `${r},${c}`;
@@ -231,8 +225,7 @@ export function BoardView({
             const isFlipping = animFlips.has(key);
             const isPlaced = animPlace === key;
             const willFlip = hoverFlips.has(key);
-            const isHint =
-              hintCell && hintCell.row === r && hintCell.col === c;
+            const isHint = hintCell && hintCell.row === r && hintCell.col === c;
             return (
               <div
                 key={key}
@@ -267,9 +260,7 @@ export function BoardView({
                       } ${isPlaced ? 'placed' : ''} ${willFlip ? 'will-flip' : ''}`}
                       aria-hidden="true"
                     >
-                      <span className="disc-mark">
-                        {cell === 'BLACK' ? '●' : '○'}
-                      </span>
+                      <span className="disc-mark">{cell === 'BLACK' ? '●' : '○'}</span>
                     </div>
                   </div>
                 )}
@@ -285,8 +276,7 @@ export function BoardView({
                 )}
                 {hover && hover.row === r && hover.col === c && meta && (
                   <div className="heatmap-tooltip" role="tooltip">
-                    ターン {meta.turnNo} ・{' '}
-                    {meta.byColor === 'BLACK' ? '黒' : '白'}{' '}
+                    ターン {meta.turnNo} ・ {meta.byColor === 'BLACK' ? '黒' : '白'}{' '}
                     {meta.cost != null ? `落札 ${meta.cost}` : '無償着手'} ・ 反転{' '}
                     {meta.flips ?? 0}
                   </div>

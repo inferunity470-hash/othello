@@ -7,12 +7,7 @@ import {
   setPendingBid,
   skipFinalMoveIfNoLegal,
 } from '../core/gameLoop';
-import {
-  Color,
-  DEFAULT_OPTIONS,
-  GameOptions,
-  GameState,
-} from '../core/types';
+import { Color, DEFAULT_OPTIONS, GameOptions, GameState } from '../core/types';
 import { hasLegalMove } from '../core/board';
 import { BoardView } from './Board';
 import { HUD } from './HUD';
@@ -27,6 +22,7 @@ import { AILevel, decideBid, decideMove } from '../core/ai';
 import { OnlineLobby } from './OnlineLobby';
 import { saveGame, loadGame, clearSave, getPref, setPref } from './storage';
 import { setEnabled as setSoundEnabled, isEnabled as isSoundEnabled } from './sound';
+import { useI18n } from '../i18n';
 
 type Mode =
   | { kind: 'lobby' }
@@ -40,6 +36,7 @@ type Mode =
   | { kind: 'online' };
 
 export function App() {
+  const { locale, setLocale, t } = useI18n();
   const [mode, setMode] = useState<Mode>({ kind: 'lobby' });
   const [help, setHelp] = useState(false);
   const [tour, setTour] = useState(false);
@@ -49,9 +46,7 @@ export function App() {
   const [reducedMotion, setReducedMotion] = useState<boolean>(
     () => getPref('motion', 'auto') === 'reduced'
   );
-  const [sound, setSound] = useState<boolean>(
-    () => getPref('sound', 'on') !== 'off'
-  );
+  const [sound, setSound] = useState<boolean>(() => getPref('sound', 'on') !== 'off');
 
   // Sync sound preference with engine
   useEffect(() => {
@@ -117,25 +112,24 @@ export function App() {
           >
             🎓 ツアー
           </button>
+          <button className="ghost" onClick={() => setHelp(true)} aria-label="ヘルプ">
+            ❓ {t('rules')}
+          </button>
           <button
             className="ghost"
-            onClick={() => setHelp(true)}
-            aria-label="ヘルプ"
+            onClick={() => setLocale(locale === 'ja' ? 'en' : 'ja')}
+            aria-label={t('language')}
+            title={t('language')}
           >
-            ❓ ルール
+            🌐 {locale === 'ja' ? 'EN' : 'JA'}
           </button>
         </div>
       </header>
-      <div className="subtitle">
-        着手権を秘密入札で取り合う、戦略的オセロ。
-      </div>
+      <div className="subtitle">着手権を秘密入札で取り合う、戦略的オセロ。</div>
       <div style={{ height: '1rem' }} />
       {mode.kind === 'lobby' && <Lobby onStart={setMode} />}
       {mode.kind === 'hotseat' && (
-        <LocalGame
-          options={mode.options}
-          onExit={() => setMode({ kind: 'lobby' })}
-        />
+        <LocalGame options={mode.options} onExit={() => setMode({ kind: 'lobby' })} />
       )}
       {mode.kind === 'vs-ai' && (
         <AIGame
@@ -171,10 +165,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
         >
           🪑 同機ホットシート
         </button>
-        <button
-          className={tab === 'ai' ? 'active' : ''}
-          onClick={() => setTab('ai')}
-        >
+        <button className={tab === 'ai' ? 'active' : ''} onClick={() => setTab('ai')}>
           🤖 NPC 対戦
         </button>
         <button
@@ -232,8 +223,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
               const v = e.target.value;
               setOptions({
                 ...options,
-                zeroBidStreakLimit:
-                  v === '' ? null : Math.max(0, parseInt(v, 10) || 0),
+                zeroBidStreakLimit: v === '' ? null : Math.max(0, parseInt(v, 10) || 0),
               });
             }}
           />
@@ -244,20 +234,14 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
         <div className="row">
           <label className="stack">
             <span>NPC の色</span>
-            <select
-              value={aiColor}
-              onChange={e => setAiColor(e.target.value as Color)}
-            >
+            <select value={aiColor} onChange={e => setAiColor(e.target.value as Color)}>
               <option value="WHITE">白(後手)</option>
               <option value="BLACK">黒(先手)</option>
             </select>
           </label>
           <label className="stack">
             <span>難易度</span>
-            <select
-              value={level}
-              onChange={e => setLevel(e.target.value as AILevel)}
-            >
+            <select value={level} onChange={e => setLevel(e.target.value as AILevel)}>
               <option value="beginner">😊 初級 ― ランダム</option>
               <option value="intermediate">🙂 中級 ― 浅い探索</option>
               <option value="advanced">😎 上級 ― 深さ4 α-β</option>
@@ -285,18 +269,15 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           </button>
         )}
         {tab === 'online' && (
-          <button
-            className="primary"
-            onClick={() => onStart({ kind: 'online' })}
-          >
+          <button className="primary" onClick={() => onStart({ kind: 'online' })}>
             ▶ ルーム選択へ
           </button>
         )}
       </div>
 
       <div className="muted">
-        🪑 ホットシート:1台のPCを2人で交代して遊ぶ ・ 🤖 NPC:鬼難度は本気を出します
-        ・ 🌐 オンライン:ルームコードで友達と。
+        🪑 ホットシート:1台のPCを2人で交代して遊ぶ ・ 🤖 NPC:鬼難度は本気を出します ・ 🌐
+        オンライン:ルームコードで友達と。
       </div>
     </div>
   );
@@ -347,10 +328,10 @@ function LocalGame({ options, onExit }: LocalGameProps) {
           color: state.pendingBids?.BLACK == null ? 'BLACK' : 'WHITE',
         }
       : state.phase === 'PLACING' ||
-        state.phase === 'FREE_MOVE' ||
-        state.phase === 'FINAL_MOVE'
-      ? { kind: 'pre-place' }
-      : { kind: 'idle' }
+          state.phase === 'FREE_MOVE' ||
+          state.phase === 'FINAL_MOVE'
+        ? { kind: 'pre-place' }
+        : { kind: 'idle' }
   );
   const [reveal, setReveal] = useState<RevealData | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -436,7 +417,7 @@ function LocalGame({ options, onExit }: LocalGameProps) {
             state.phase === 'PLACING' ||
             state.phase === 'FREE_MOVE' ||
             state.phase === 'FINAL_MOVE'
-              ? placer ?? null
+              ? (placer ?? null)
               : null
           }
           onCellClick={handlePlace}
@@ -503,8 +484,8 @@ function LocalGame({ options, onExit }: LocalGameProps) {
               state.phase === 'FINAL_MOVE'
                 ? '最終1手です(角ボーナスは適用されません)'
                 : state.phase === 'FREE_MOVE'
-                ? '相手に合法手がないため、無償で着手します。'
-                : 'ハイライトされたマスをタップしてください。'
+                  ? '相手に合法手がないため、無償で着手します。'
+                  : 'ハイライトされたマスをタップしてください。'
             }
             buttonLabel="準備OK"
             onClick={() => setHandoff({ kind: 'idle' })}
@@ -733,8 +714,8 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
             </span>
           )}
           <span className="muted" style={{ marginLeft: 'auto' }}>
-            あなた: {humanColor === 'BLACK' ? '⚫黒' : '⚪白'} ・ NPC: {aiColor === 'BLACK' ? '⚫黒' : '⚪白'}{' '}
-            ({levelLabel(level)})
+            あなた: {humanColor === 'BLACK' ? '⚫黒' : '⚪白'} ・ NPC:{' '}
+            {aiColor === 'BLACK' ? '⚫黒' : '⚪白'} ({levelLabel(level)})
           </span>
         </div>
       </div>
@@ -746,7 +727,8 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
         {!myTurnToBid && state.phase === 'BIDDING' && !reveal && (
           <div className="bid-panel">
             <div>
-              ✓ あなたは <strong>{state.pendingBids?.[humanColor]}</strong> を入札しました。
+              ✓ あなたは <strong>{state.pendingBids?.[humanColor]}</strong>{' '}
+              を入札しました。
             </div>
             <div className="muted">
               {thinking && <span className="spinner" />}
@@ -767,9 +749,7 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
             </div>
           )}
         <GameLog state={state} />
-        {state.phase === 'ENDED' && (
-          <ResultCard state={state} myColor={humanColor} />
-        )}
+        {state.phase === 'ENDED' && <ResultCard state={state} myColor={humanColor} />}
       </div>
       {reveal && (
         <BidReveal

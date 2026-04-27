@@ -40,8 +40,8 @@ export function GameLog({ state, onJumpTo }: Props) {
                     winner === 'BLACK' ? '黒' : '白'
                   }が ${t.payment} 支払い${t.tieBroken ? '(同額・トークン移動)' : ''}`
                 : t.phaseAtStart === 'FREE_MOVE'
-                ? '無償着手'
-                : '最終1手'
+                  ? '無償着手'
+                  : '最終1手'
             }
             onClick={() => onJumpTo?.(t.turnNo)}
           >
@@ -49,7 +49,13 @@ export function GameLog({ state, onJumpTo }: Props) {
             <span>
               <span className="move-cell">{moveStr(t)}</span>
               {t.bids && (
-                <span style={{ marginLeft: '0.4rem', color: 'var(--muted)', fontSize: '0.78rem' }}>
+                <span
+                  style={{
+                    marginLeft: '0.4rem',
+                    color: 'var(--muted)',
+                    fontSize: '0.78rem',
+                  }}
+                >
                   ({t.bids.BLACK}-{t.bids.WHITE}
                   {t.tieBroken ? '*' : ''})
                 </span>
@@ -60,7 +66,13 @@ export function GameLog({ state, onJumpTo }: Props) {
                 </span>
               )}
               {t.phaseAtStart === 'FREE_MOVE' && (
-                <span style={{ marginLeft: '0.3rem', color: 'var(--info)', fontSize: '0.78rem' }}>
+                <span
+                  style={{
+                    marginLeft: '0.3rem',
+                    color: 'var(--info)',
+                    fontSize: '0.78rem',
+                  }}
+                >
                   無償
                 </span>
               )}

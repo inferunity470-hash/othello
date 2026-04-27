@@ -8,12 +8,7 @@ interface Props {
   onClick: () => void;
 }
 
-export function HandoffOverlay({
-  title,
-  description,
-  buttonLabel,
-  onClick,
-}: Props) {
+export function HandoffOverlay({ title, description, buttonLabel, onClick }: Props) {
   return (
     <div className="overlay" role="dialog" aria-label={title}>
       <FocusTrap onEscape={onClick} autoFocusSelector=".primary">

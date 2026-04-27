@@ -60,10 +60,10 @@ export function ResultCard({ state, myColor, result }: Props) {
         {r.winner === 'DRAW'
           ? '🤝 引き分け'
           : isWin
-          ? '🎉 勝利!'
-          : isLoss
-          ? '💧 敗北...'
-          : `🏆 ${r.winner === 'BLACK' ? '黒' : '白'} の勝利`}
+            ? '🎉 勝利!'
+            : isLoss
+              ? '💧 敗北...'
+              : `🏆 ${r.winner === 'BLACK' ? '黒' : '白'} の勝利`}
       </h2>
       <div className="score">
         <span className="black-num">⚫ {r.stones.BLACK}</span>

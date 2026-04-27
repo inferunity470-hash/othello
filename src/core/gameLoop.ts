@@ -68,11 +68,7 @@ export function computeAutoPhase(state: GameState): GameState {
   return { ...state, phase: 'BIDDING', pendingBids: state.pendingBids ?? {} };
 }
 
-export function setPendingBid(
-  state: GameState,
-  color: Color,
-  amount: number
-): GameState {
+export function setPendingBid(state: GameState, color: Color, amount: number): GameState {
   if (state.phase !== 'BIDDING') {
     throw new Error(`Cannot bid in phase ${state.phase}`);
   }
@@ -122,8 +118,7 @@ export function resolvePendingBids(state: GameState): ResolveOutcome {
   };
   newPlayers[res.winner].chips -= res.payment;
 
-  const bothZero =
-    newPlayers.BLACK.chips === 0 && newPlayers.WHITE.chips === 0;
+  const bothZero = newPlayers.BLACK.chips === 0 && newPlayers.WHITE.chips === 0;
   // After bidding, board is unchanged, so both still have legal moves
   // (since BIDDING was entered only when both had moves).
   const holderHasMove = hasLegalMove(state.board, res.newInitiativeHolder);
@@ -208,9 +203,7 @@ export function applyPlacement(
   }
   const expected = expectedMover(state);
   if (expected != null && expected !== mover) {
-    throw new Error(
-      `Expected ${expected} to move in phase ${state.phase}, got ${mover}`
-    );
+    throw new Error(`Expected ${expected} to move in phase ${state.phase}, got ${mover}`);
   }
 
   const before = state.board;

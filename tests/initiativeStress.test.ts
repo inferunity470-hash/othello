@@ -19,12 +19,7 @@ interface PlayConfig {
   seed: number;
 }
 
-function playFullGame({
-  blackLevel,
-  whiteLevel,
-  options,
-  seed,
-}: PlayConfig): GameState {
+function playFullGame({ blackLevel, whiteLevel, options, seed }: PlayConfig): GameState {
   const rng = makeRng(seed);
   let s = initGame(options);
   let safety = 1500;
@@ -101,14 +96,14 @@ describe('replay invariant (randomised)', () => {
           throw new Error(
             `replay failed at seed=${seed} options=${JSON.stringify(opt)}: ${
               (err as Error).message
-            }`
+            }`,
+            { cause: err }
           );
         }
         expect(re.board, `board mismatch seed=${seed}`).toEqual(final.board);
-        expect(
-          re.players.BLACK.chips,
-          `B chips mismatch seed=${seed}`
-        ).toBe(final.players.BLACK.chips);
+        expect(re.players.BLACK.chips, `B chips mismatch seed=${seed}`).toBe(
+          final.players.BLACK.chips
+        );
         expect(re.players.WHITE.chips).toBe(final.players.WHITE.chips);
         expect(re.initiativeHolder).toBe(final.initiativeHolder);
         expect(re.phase).toBe(final.phase);
@@ -130,7 +125,11 @@ describe('replay invariant (randomised)', () => {
     for (const t of final.history) {
       if (t.mover) {
         const expectedAfter =
-          t.mover === prevHolder ? (prevHolder === 'BLACK' ? 'WHITE' : 'BLACK') : prevHolder;
+          t.mover === prevHolder
+            ? prevHolder === 'BLACK'
+              ? 'WHITE'
+              : 'BLACK'
+            : prevHolder;
         expect(
           t.initiativeAfter,
           `turn ${t.turnNo} mover=${t.mover} prevHolder=${prevHolder}`

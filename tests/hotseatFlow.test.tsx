@@ -3,7 +3,8 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import React from 'react';
-import { render, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
+import { fireEvent } from '@testing-library/dom';
 import { App } from '../src/ui/App';
 
 beforeAll(() => {
@@ -16,7 +17,11 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  try { localStorage.clear(); } catch { /* ignore */ }
+  try {
+    localStorage.clear();
+  } catch {
+    /* ignore */
+  }
 });
 
 /**

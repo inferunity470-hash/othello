@@ -56,14 +56,24 @@ describe('board basics', () => {
     // place a black at (3,3) target
     // For each direction, place opponent W at neighbor and B at far end
     const setups: Array<[number, number]> = [
-      [0, 0], [0, 3], [0, 6],
-      [3, 0],         [3, 6],
-      [6, 0], [6, 3], [6, 6],
+      [0, 0],
+      [0, 3],
+      [0, 6],
+      [3, 0],
+      [3, 6],
+      [6, 0],
+      [6, 3],
+      [6, 6],
     ];
     const dirs = [
-      [-1, -1], [-1, 0], [-1, 1],
-      [0, -1],           [0, 1],
-      [1, -1],  [1, 0],  [1, 1],
+      [-1, -1],
+      [-1, 0],
+      [-1, 1],
+      [0, -1],
+      [0, 1],
+      [1, -1],
+      [1, 0],
+      [1, 1],
     ];
     // place B-sandwich-W around an empty (3,3)? Actually let's just test 1 dir at a time
     for (let i = 0; i < dirs.length; i++) {

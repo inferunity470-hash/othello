@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { initGame, applyPlacement, setPendingBid, resolvePendingBids } from '../src/core/gameLoop';
+import {
+  initGame,
+  applyPlacement,
+  setPendingBid,
+  resolvePendingBids,
+} from '../src/core/gameLoop';
 import { replayEvents, rewindTo } from '../src/core/events';
 import { legalMoves } from '../src/core/board';
 import { GameState } from '../src/core/types';
@@ -39,7 +44,7 @@ describe('event sourcing', () => {
     const after1 = rewindTo(s.options, s.history, 1);
     s = playOneTurn(s, 5, 50);
     s = playOneTurn(s, 0, 0);
-
+    expect(s.phase).toBeDefined();
     expect(after1.history).toHaveLength(1);
     expect(after1.players.BLACK.chips).toBe(170);
   });

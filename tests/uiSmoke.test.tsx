@@ -3,7 +3,8 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import React from 'react';
-import { render, fireEvent, cleanup } from '@testing-library/react';
+import { render, cleanup } from '@testing-library/react';
+import { fireEvent } from '@testing-library/dom';
 import { App } from '../src/ui/App';
 import { BoardView } from '../src/ui/Board';
 import { BidPanel } from '../src/ui/BidPanel';
@@ -25,7 +26,11 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  try { localStorage.clear(); } catch { /* ignore */ }
+  try {
+    localStorage.clear();
+  } catch {
+    /* ignore */
+  }
 });
 
 describe('UI smoke (jsdom)', () => {

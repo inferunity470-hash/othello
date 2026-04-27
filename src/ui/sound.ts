@@ -9,11 +9,11 @@
  */
 
 export type SoundName =
-  | 'place'        // a stone is placed on the board
-  | 'flip'         // one or more stones flipped
-  | 'bid'          // a bid was confirmed (UI tick)
-  | 'reveal'       // bid reveal modal opens
-  | 'cornerBonus'  // chip count went up (e.g. corner bonus)
+  | 'place' // a stone is placed on the board
+  | 'flip' // one or more stones flipped
+  | 'bid' // a bid was confirmed (UI tick)
+  | 'reveal' // bid reveal modal opens
+  | 'cornerBonus' // chip count went up (e.g. corner bonus)
   | 'gameWin'
   | 'gameLose'
   | 'gameDraw';
@@ -80,7 +80,15 @@ function tone(
 }
 
 /** Sequence of tones with relative onset offsets. */
-function seq(notes: Array<{ at: number; freq: number; dur: number; type?: OscillatorType; gain?: number }>) {
+function seq(
+  notes: Array<{
+    at: number;
+    freq: number;
+    dur: number;
+    type?: OscillatorType;
+    gain?: number;
+  }>
+) {
   for (const n of notes) {
     setTimeout(() => tone(n.freq, n.dur, n.type ?? 'sine', n.gain ?? 0.5), n.at * 1000);
   }
@@ -106,26 +114,26 @@ export function play(name: SoundName) {
       break;
     case 'cornerBonus':
       seq([
-        { at: 0, freq: 659, dur: 0.10, gain: 0.45 },
+        { at: 0, freq: 659, dur: 0.1, gain: 0.45 },
         { at: 0.06, freq: 988, dur: 0.16, gain: 0.45 },
       ]);
       break;
     case 'gameWin':
       seq([
-        { at: 0.00, freq: 523, dur: 0.13, type: 'triangle', gain: 0.55 },
-        { at: 0.10, freq: 659, dur: 0.13, type: 'triangle', gain: 0.55 },
-        { at: 0.20, freq: 784, dur: 0.22, type: 'triangle', gain: 0.6 },
+        { at: 0.0, freq: 523, dur: 0.13, type: 'triangle', gain: 0.55 },
+        { at: 0.1, freq: 659, dur: 0.13, type: 'triangle', gain: 0.55 },
+        { at: 0.2, freq: 784, dur: 0.22, type: 'triangle', gain: 0.6 },
       ]);
       break;
     case 'gameLose':
       seq([
-        { at: 0.00, freq: 392, dur: 0.18, type: 'triangle', gain: 0.4 },
+        { at: 0.0, freq: 392, dur: 0.18, type: 'triangle', gain: 0.4 },
         { at: 0.13, freq: 311, dur: 0.26, type: 'triangle', gain: 0.4 },
       ]);
       break;
     case 'gameDraw':
       seq([
-        { at: 0.00, freq: 523, dur: 0.14, gain: 0.4 },
+        { at: 0.0, freq: 523, dur: 0.14, gain: 0.4 },
         { at: 0.12, freq: 523, dur: 0.14, gain: 0.4 },
       ]);
       break;

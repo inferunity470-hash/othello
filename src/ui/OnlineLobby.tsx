@@ -341,9 +341,7 @@ export function OnlineLobby({ onExit }: Props) {
           <BoardView
             state={state}
             showLegalForColor={
-              !youAreSpec && canPlace(state, session.you)
-                ? (session.you as Color)
-                : null
+              !youAreSpec && canPlace(state, session.you) ? (session.you as Color) : null
             }
             onCellClick={handlePlace}
             showHeatmap={showHeatmap || state.phase === 'ENDED'}
@@ -371,10 +369,7 @@ export function OnlineLobby({ onExit }: Props) {
           >
             🔥 ヒートマップ
           </button>
-          <span
-            className={`connection-status ${status}`}
-            style={{ marginLeft: 'auto' }}
-          >
+          <span className={`connection-status ${status}`} style={{ marginLeft: 'auto' }}>
             <span className="dot" />
             {opponentDown ? '相手切断中' : connectionLabel(status)}
           </span>
@@ -396,11 +391,7 @@ export function OnlineLobby({ onExit }: Props) {
       <div className="col">
         {state && <HUD state={state} myColor={session.you} />}
         {state && myTurnToBid && !reveal && (
-          <BidPanel
-            state={state}
-            color={session.you as Color}
-            onSubmit={handleBid}
-          />
+          <BidPanel state={state} color={session.you as Color} onSubmit={handleBid} />
         )}
         {state &&
           state.phase === 'BIDDING' &&
@@ -409,8 +400,8 @@ export function OnlineLobby({ onExit }: Props) {
           !reveal && (
             <div className="bid-panel">
               <div>
-                ✓ あなたは{' '}
-                <strong>{state.pendingBids?.[session.you as Color]}</strong> を入札しました。
+                ✓ あなたは <strong>{state.pendingBids?.[session.you as Color]}</strong>{' '}
+                を入札しました。
               </div>
               <div className="muted">
                 <span className="spinner" />
@@ -524,8 +515,8 @@ function ChatPanel({
                 c.from === 'BLACK'
                   ? 'who-black'
                   : c.from === 'WHITE'
-                  ? 'who-white'
-                  : 'who-spec'
+                    ? 'who-white'
+                    : 'who-spec'
               }
             >
               {c.from === 'BLACK' ? '⚫' : c.from === 'WHITE' ? '⚪' : '👁'}

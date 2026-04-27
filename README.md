@@ -7,10 +7,12 @@
 ## 起動方法
 
 ### 必要環境
+
 - Node.js >= 20 (本リポジトリは v22 で動作確認)
 - npm >= 10
 
 ### セットアップ
+
 ```bash
 npm install
 ```
@@ -18,15 +20,19 @@ npm install
 ### モード別の起動
 
 **1. 同機ホットシート / NPC 対戦のみ (オフライン)**
+
 ```bash
 npm run dev
 ```
+
 表示された URL (`http://localhost:5173/`) をブラウザで開き、ロビーから「同機ホットシート」または「NPC 対戦」を選択。
 
 **2. オンライン対戦も含む (フロント + WebSocket サーバ同時起動)**
+
 ```bash
 npm start
 ```
+
 これで Vite (`:5173`) と WebSocket サーバ (`:8787`) が同時に起動します。
 `localhost:5173` を開き、ロビーで「友達とオンライン」→ ルームを作成 → 6文字のコードを友人に共有。
 
@@ -34,14 +40,17 @@ npm start
 LAN を超える場合は ngrok / Cloudflare Tunnel などを噛ませてください。
 
 **3. 本番ビルド (静的ホスティング向け)**
+
 ```bash
 npm run build
 npm run preview   # http://localhost:4173 で確認
 ```
+
 `dist/` を Vercel / Cloudflare Pages 等にデプロイ可能。
 オンライン対戦を使う場合は `server/index.ts` を別途デプロイ ((tsx で起動 or `tsc --outDir dist-server` 後 node 実行)。
 
 ### テスト・型チェック
+
 ```bash
 npm test                # Vitest を一回実行
 npx tsc --noEmit        # 型チェック
@@ -56,6 +65,7 @@ npx tsc --noEmit        # 型チェック
 - **アクセシビリティ**: 黒石/白石を文字でも区別、`aria-label` で読み上げ対応
 
 ## ディレクトリ構造
+
 ```
 src/
   core/         ゲームロジック (DOM・React 非依存)
@@ -86,5 +96,5 @@ tests/          Vitest テスト
 ```
 
 ## ライセンス
-本コードは `inferunity470-hash/othello` リポジトリの一部として配布。
 
+本コードは `inferunity470-hash/othello` リポジトリの一部として配布。

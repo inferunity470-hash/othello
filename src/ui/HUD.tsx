@@ -154,13 +154,7 @@ function PlayerCard({
   );
 }
 
-function ElapsedTimer({
-  startedAt,
-  endedAt,
-}: {
-  startedAt: number;
-  endedAt?: number;
-}) {
+function ElapsedTimer({ startedAt, endedAt }: { startedAt: number; endedAt?: number }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (endedAt) return;
@@ -191,8 +185,7 @@ function phaseClass(p: GameState['phase']): string {
 function phaseText(state: GameState, my?: Color | 'SPECTATE'): string {
   switch (state.phase) {
     case 'BIDDING': {
-      const myDone =
-        my && my !== 'SPECTATE' ? state.pendingBids?.[my] != null : false;
+      const myDone = my && my !== 'SPECTATE' ? state.pendingBids?.[my] != null : false;
       return myDone ? '🎲 入札済み — 相手を待機中' : '🎲 入札フェーズ';
     }
     case 'RESOLVING':

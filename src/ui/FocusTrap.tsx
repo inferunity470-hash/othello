@@ -32,9 +32,8 @@ export function FocusTrap({
     if (!root) return;
     // Auto-focus a target inside, falling back to first focusable element
     const initial =
-      (autoFocusSelector
-        ? root.querySelector<HTMLElement>(autoFocusSelector)
-        : null) ?? firstFocusable(root);
+      (autoFocusSelector ? root.querySelector<HTMLElement>(autoFocusSelector) : null) ??
+      firstFocusable(root);
     initial?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -84,8 +83,6 @@ function focusableEls(root: HTMLElement): HTMLElement[] {
   const sel =
     'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   return Array.from(root.querySelectorAll<HTMLElement>(sel)).filter(
-    el =>
-      !el.hasAttribute('disabled') &&
-      el.getAttribute('aria-hidden') !== 'true'
+    el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true'
   );
 }

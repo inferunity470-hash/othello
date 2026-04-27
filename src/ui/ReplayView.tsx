@@ -60,8 +60,8 @@ export function ReplayView({ finalState, onClose }: Props) {
                   {turn.phaseAtStart === 'BIDDING'
                     ? '入札ターン'
                     : turn.phaseAtStart === 'FREE_MOVE'
-                    ? '無償着手'
-                    : '最終1手'}
+                      ? '無償着手'
+                      : '最終1手'}
                 </div>
                 {turn.bids && (
                   <div className="muted">

@@ -18,7 +18,9 @@ describe('handicap (asymmetric initial chips)', () => {
   });
 
   it('initialChipsFor helper handles both forms', () => {
-    expect(initialChipsFor({ ...initGame().options, initialChips: 200 }, 'BLACK')).toBe(200);
+    expect(initialChipsFor({ ...initGame().options, initialChips: 200 }, 'BLACK')).toBe(
+      200
+    );
     expect(
       initialChipsFor(
         { ...initGame().options, initialChips: { BLACK: 50, WHITE: 300 } },

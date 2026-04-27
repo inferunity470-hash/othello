@@ -48,22 +48,17 @@ export function BidReveal({
     nextPhase === 'FINAL_MOVE'
       ? holderAtResolve
       : nextPhase === 'PLACING'
-      ? winner
-      : nextPhase == null
-      ? winner // legacy callers without nextPhase: assume PLACING
-      : null;
+        ? winner
+        : nextPhase == null
+          ? winner // legacy callers without nextPhase: assume PLACING
+          : null;
   const tokenWillTransfer =
     holderAtResolve != null && placer != null && placer === holderAtResolve;
   const tokenStays =
     holderAtResolve != null && placer != null && placer !== holderAtResolve;
 
   return (
-    <div
-      className="overlay"
-      onClick={onClose}
-      role="alertdialog"
-      aria-label="入札公開"
-    >
+    <div className="overlay" onClick={onClose} role="alertdialog" aria-label="入札公開">
       <FocusTrap onEscape={onClose} autoFocusSelector="button">
         <div
           className="overlay-card"
@@ -98,14 +93,12 @@ export function BidReveal({
                 style={{ marginTop: '0.3rem' }}
                 aria-label="トークン移動予告"
               >
-                着手後、先手権トークンが {winner === 'BLACK' ? '白' : '黒'}{' '}
-                に移動します
+                着手後、先手権トークンが {winner === 'BLACK' ? '白' : '黒'} に移動します
               </div>
             )}
             {tokenStays && (
               <div className="muted" style={{ marginTop: '0.3rem' }}>
-                先手権トークンは{' '}
-                {holderAtResolve === 'BLACK' ? '黒' : '白'} のまま維持
+                先手権トークンは {holderAtResolve === 'BLACK' ? '黒' : '白'} のまま維持
               </div>
             )}
           </div>

@@ -64,13 +64,13 @@ export function BidPanel({ state, color, onSubmit, label }: Props) {
         <span>
           手持ち <strong>{chips}</strong>
         </span>
-        <span>→ 賭ける <strong>{Math.max(0, amount)}</strong></span>
+        <span>
+          → 賭ける <strong>{Math.max(0, amount)}</strong>
+        </span>
         <span>
           残 <strong>{Math.max(0, chips - amount)}</strong>
         </span>
-        {minBid > 0 && (
-          <span className="pill warn">最小 {minBid}</span>
-        )}
+        {minBid > 0 && <span className="pill warn">最小 {minBid}</span>}
       </div>
 
       <div className="quick-bid-grid">

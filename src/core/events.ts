@@ -19,10 +19,7 @@ import { GameOptions, GameState, TurnRecord, opponentOf } from './types';
  *  - phaseAtStart === 'FREE_MOVE': mover + move
  *  - phaseAtStart === 'FINAL_MOVE': mover + move (or no move if skipped)
  */
-export function replayEvents(
-  options: GameOptions,
-  events: TurnRecord[]
-): GameState {
+export function replayEvents(options: GameOptions, events: TurnRecord[]): GameState {
   let state = initGame(options);
   for (const ev of events) {
     state = applyEvent(state, ev);

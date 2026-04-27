@@ -10,11 +10,7 @@ import {
 import { countStones, hasLegalMove } from '../src/core/board';
 import { determineWinner } from '../src/core/scoring';
 import { Color, GameOptions, GameState } from '../src/core/types';
-import {
-  ClientMsg,
-  ServerMsg,
-  toPublicState,
-} from '../src/net/protocol';
+import { ClientMsg, ServerMsg, toPublicState } from '../src/net/protocol';
 
 const PORT = parseInt(process.env.PORT ?? '8787', 10);
 
@@ -67,8 +63,8 @@ function broadcastState(room: Room) {
       p === room.players.BLACK
         ? 'BLACK'
         : p === room.players.WHITE
-        ? 'WHITE'
-        : 'SPECTATE';
+          ? 'WHITE'
+          : 'SPECTATE';
     send(p.ws, { t: 'STATE', state: toPublicState(room.state, recipient) });
   }
 }
@@ -121,8 +117,8 @@ wss.on('connection', ws => {
       myColor === 'BLACK'
         ? room.players.WHITE
         : myColor === 'WHITE'
-        ? room.players.BLACK
-        : null;
+          ? room.players.BLACK
+          : null;
     if (opp && opp.connected) {
       send(opp.ws, { t: 'OPPONENT_DISCONNECTED', graceSec: 60 });
     }
@@ -193,8 +189,8 @@ wss.on('connection', ws => {
         assigned === 'BLACK'
           ? room.players.WHITE
           : assigned === 'WHITE'
-          ? room.players.BLACK
-          : null;
+            ? room.players.BLACK
+            : null;
       reply({
         t: 'JOINED',
         room: room.code,
@@ -262,11 +258,7 @@ wss.on('connection', ws => {
           payment: out.resolution.payment,
           tieBroken: out.resolution.tieBroken,
           holderAtResolve: out.state.initiativeHolder,
-          nextPhase: out.state.phase as
-            | 'PLACING'
-            | 'FREE_MOVE'
-            | 'FINAL_MOVE'
-            | 'ENDED',
+          nextPhase: out.state.phase as 'PLACING' | 'FREE_MOVE' | 'FINAL_MOVE' | 'ENDED',
         });
         const last = room.state.history[room.state.history.length - 1];
         if (last) broadcast(room, { t: 'TURN_RECORDED', record: last });

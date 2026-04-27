@@ -1,17 +1,17 @@
 import { Board, Color, opponentOf } from '../types';
 import { applyMove, countStones, hasLegalMove, legalMoves } from '../board';
 
-// Positional weight table tuned for 8x8 Othello (corners high, X-squares deeply penalized)
-// Standard "Iago"-style weights.
+// Refined positional weights — slightly more aggressive on corner-adjacent
+// penalties than basic Iago weights to discourage X/C-square plays.
 export const POSITION_WEIGHTS: number[][] = [
-  [120, -20, 20, 5, 5, 20, -20, 120],
-  [-20, -40, -5, -5, -5, -5, -40, -20],
+  [120, -25, 20, 5, 5, 20, -25, 120],
+  [-25, -50, -5, -5, -5, -5, -50, -25],
   [20, -5, 15, 3, 3, 15, -5, 20],
   [5, -5, 3, 3, 3, 3, -5, 5],
   [5, -5, 3, 3, 3, 3, -5, 5],
   [20, -5, 15, 3, 3, 15, -5, 20],
-  [-20, -40, -5, -5, -5, -5, -40, -20],
-  [120, -20, 20, 5, 5, 20, -20, 120],
+  [-25, -50, -5, -5, -5, -5, -50, -25],
+  [120, -25, 20, 5, 5, 20, -25, 120],
 ];
 
 const CORNERS: Array<[number, number]> = [
@@ -60,12 +60,16 @@ export function stoneDifference(board: Board, color: Color): number {
 }
 
 export function frontierScore(board: Board, color: Color): number {
-  // Count "frontier" discs (those adjacent to empty squares). Fewer is better.
   const opp = opponentOf(color);
   const dirs = [
-    [-1, -1], [-1, 0], [-1, 1],
-    [0, -1], [0, 1],
-    [1, -1], [1, 0], [1, 1],
+    [-1, -1],
+    [-1, 0],
+    [-1, 1],
+    [0, -1],
+    [0, 1],
+    [1, -1],
+    [1, 0],
+    [1, 1],
   ];
   let mine = 0;
   let theirs = 0;
@@ -94,9 +98,181 @@ export function frontierScore(board: Board, color: Color): number {
 }
 
 /**
- * Phase-aware evaluator.
- *  - early/mid game: positional + mobility + corners > stone count
- *  - end game: stone count dominates
+ * Count corner-anchored stable discs along the four edges and into the
+ * board. A simplified approximation that catches the dominant cases without
+ * being too expensive.
+ */
+export function stableDiscScore(board: Board, color: Color): number {
+  const stable: boolean[][] = Array.from({ length: 8 }, () => new Array(8).fill(false));
+
+  // 1. Mark corner anchors
+  for (const [r, c] of CORNERS) {
+    if (board[r][c] === color) stable[r][c] = true;
+  }
+
+  // 2. Walk each edge from a corner; consecutive same-color stones are stable.
+  // Top edge from (0,0) rightward and from (0,7) leftward
+  walkEdge(board, color, stable, 0, 0, 0, 1);
+  walkEdge(board, color, stable, 0, 7, 0, -1);
+  // Bottom edge
+  walkEdge(board, color, stable, 7, 0, 0, 1);
+  walkEdge(board, color, stable, 7, 7, 0, -1);
+  // Left edge
+  walkEdge(board, color, stable, 0, 0, 1, 0);
+  walkEdge(board, color, stable, 7, 0, -1, 0);
+  // Right edge
+  walkEdge(board, color, stable, 0, 7, 1, 0);
+  walkEdge(board, color, stable, 7, 7, -1, 0);
+
+  // 3. Iterative deepening of stability into the interior:
+  //    a stone is stable if for every direction one of:
+  //      (a) the line in that direction (until edge) is full of same color
+  //          AND has a stable anchor, OR
+  //      (b) the immediate neighbour in that direction is stable & same color.
+  // This is an approximation; we just iterate until no change.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (stable[r][c] || board[r][c] !== color) continue;
+        if (isInteriorStable(board, stable, r, c, color)) {
+          stable[r][c] = true;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  let mine = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (stable[r][c]) mine++;
+    }
+  }
+
+  // Symmetric calc for opponent (cheap re-run)
+  const oppStable: boolean[][] = Array.from({ length: 8 }, () =>
+    new Array(8).fill(false)
+  );
+  const opp = opponentOf(color);
+  for (const [r, c] of CORNERS) {
+    if (board[r][c] === opp) oppStable[r][c] = true;
+  }
+  walkEdge(board, opp, oppStable, 0, 0, 0, 1);
+  walkEdge(board, opp, oppStable, 0, 7, 0, -1);
+  walkEdge(board, opp, oppStable, 7, 0, 0, 1);
+  walkEdge(board, opp, oppStable, 7, 7, 0, -1);
+  walkEdge(board, opp, oppStable, 0, 0, 1, 0);
+  walkEdge(board, opp, oppStable, 7, 0, -1, 0);
+  walkEdge(board, opp, oppStable, 0, 7, 1, 0);
+  walkEdge(board, opp, oppStable, 7, 7, -1, 0);
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (oppStable[r][c] || board[r][c] !== opp) continue;
+        if (isInteriorStable(board, oppStable, r, c, opp)) {
+          oppStable[r][c] = true;
+          changed = true;
+        }
+      }
+    }
+  }
+  let theirs = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (oppStable[r][c]) theirs++;
+    }
+  }
+  if (mine + theirs === 0) return 0;
+  return (100 * (mine - theirs)) / (mine + theirs);
+}
+
+function walkEdge(
+  board: Board,
+  color: Color,
+  stable: boolean[][],
+  startR: number,
+  startC: number,
+  dr: number,
+  dc: number
+) {
+  if (board[startR]?.[startC] !== color) return;
+  let r = startR;
+  let c = startC;
+  while (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r][c] === color) {
+    stable[r][c] = true;
+    r += dr;
+    c += dc;
+  }
+}
+
+function isInteriorStable(
+  board: Board,
+  stable: boolean[][],
+  r: number,
+  c: number,
+  color: Color
+): boolean {
+  // For each of 4 axes, the disc is stable if at least one direction:
+  //   - the cell is on a board edge (no further disc possible), OR
+  //   - the immediate neighbour same-color is stable, OR
+  //   - the line is fully filled in that direction (no flips possible).
+  const axes: Array<[number, number]> = [
+    [0, 1], // horizontal
+    [1, 0], // vertical
+    [1, 1], // diagonal
+    [1, -1], // anti-diagonal
+  ];
+  for (const [dr, dc] of axes) {
+    if (!axisStable(board, stable, r, c, dr, dc, color)) return false;
+  }
+  return true;
+}
+
+function axisStable(
+  board: Board,
+  stable: boolean[][],
+  r: number,
+  c: number,
+  dr: number,
+  dc: number,
+  color: Color
+): boolean {
+  return (
+    halfStable(board, stable, r, c, dr, dc, color) ||
+    halfStable(board, stable, r, c, -dr, -dc, color)
+  );
+}
+
+function halfStable(
+  board: Board,
+  stable: boolean[][],
+  r: number,
+  c: number,
+  dr: number,
+  dc: number,
+  color: Color
+): boolean {
+  let nr = r + dr;
+  let nc = c + dc;
+  if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) return true; // off board
+  // Adjacent same-color and stable
+  if (board[nr][nc] === color && stable[nr][nc]) return true;
+  // Line fully filled to edge in this direction
+  while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+    if (board[nr][nc] === null) return false;
+    nr += dr;
+    nc += dc;
+  }
+  return true;
+}
+
+/**
+ * Phase-aware evaluator. Higher-quality than the previous version:
+ * adds stable disc count and tunes mobility/positional weights per phase.
  */
 export function evaluateBoard(board: Board, color: Color): number {
   const empty = countEmpty(board);
@@ -105,29 +281,33 @@ export function evaluateBoard(board: Board, color: Color): number {
     return stoneDifference(board, color) * 1000;
   }
   if (filled < 20) {
-    // opening
+    // opening: positional + mobility dominates
     return (
       positionalScore(board, color) * 1.0 +
-      mobilityScore(board, color) * 5.0 +
-      cornerControl(board, color) * 10.0 +
-      frontierScore(board, color) * 2.0
+      mobilityScore(board, color) * 6.0 +
+      cornerControl(board, color) * 14.0 +
+      frontierScore(board, color) * 2.0 +
+      stableDiscScore(board, color) * 4.0
     );
   }
   if (filled < 50) {
+    // midgame: stable discs and corners matter more
     return (
       positionalScore(board, color) * 1.0 +
-      mobilityScore(board, color) * 4.0 +
-      cornerControl(board, color) * 12.0 +
-      frontierScore(board, color) * 2.0 +
+      mobilityScore(board, color) * 5.0 +
+      cornerControl(board, color) * 16.0 +
+      frontierScore(board, color) * 2.5 +
+      stableDiscScore(board, color) * 8.0 +
       stoneDifference(board, color) * 0.5
     );
   }
-  // endgame
+  // endgame: stones and stability dominate
   return (
-    positionalScore(board, color) * 0.5 +
+    positionalScore(board, color) * 0.4 +
     mobilityScore(board, color) * 1.0 +
-    cornerControl(board, color) * 8.0 +
-    stoneDifference(board, color) * 5.0
+    cornerControl(board, color) * 10.0 +
+    stableDiscScore(board, color) * 12.0 +
+    stoneDifference(board, color) * 6.0
   );
 }
 
@@ -138,8 +318,8 @@ function countEmpty(board: Board): number {
 }
 
 /**
- * Alpha-beta search returning best move and its score from `color`'s perspective.
- * Search treats opponent as alternating (standard othello, not bidding-aware).
+ * Legacy plain α-β kept for advanced/intermediate levels and for tests.
+ * Oni uses the upgraded search in `search.ts`.
  */
 export interface SearchResult {
   score: number;
@@ -161,10 +341,8 @@ export function alphabeta(
   const moves = legalMoves(board, color);
   if (moves.length === 0) {
     if (passedOnce) {
-      // game effectively over from this branch's POV
       return { score: evaluateBoard(board, rootColor) };
     }
-    // pass turn
     const r = alphabeta(
       board,
       opponentOf(color),
@@ -177,7 +355,6 @@ export function alphabeta(
     return { score: r.score };
   }
 
-  // Move ordering: try corners first, then by simple flip count
   moves.sort((a, b) => {
     const ac = isCorner(a.row, a.col) ? 1 : 0;
     const bc = isCorner(b.row, b.col) ? 1 : 0;
@@ -198,15 +375,11 @@ export function alphabeta(
       false
     );
     if (color === rootColor) {
-      if (r.score > best.score) {
-        best = { score: r.score, move: m };
-      }
+      if (r.score > best.score) best = { score: r.score, move: m };
       alpha = Math.max(alpha, r.score);
       if (alpha >= beta) break;
     } else {
-      if (r.score < best.score) {
-        best = { score: r.score, move: m };
-      }
+      if (r.score < best.score) best = { score: r.score, move: m };
       beta = Math.min(beta, r.score);
       if (alpha >= beta) break;
     }

@@ -10,7 +10,8 @@ const STEPS = [
     title: '🎲 秘密入札で着手権を奪い合う',
     body: (
       <>
-        各ターン、両者は <strong>同時に秘密入札</strong> します。高い金額を入札した方が勝ち、
+        各ターン、両者は <strong>同時に秘密入札</strong>{' '}
+        します。高い金額を入札した方が勝ち、
         その額を支払って着手します。チップは支払うたびに <em>場へ消えて</em>、
         ゲームを通じて減り続けます。
       </>
@@ -20,8 +21,8 @@ const STEPS = [
     title: '★ トークン と 着手による移動',
     body: (
       <>
-        同額入札時は <strong>先手権トークン保持者</strong> が勝ちます。
-        トークンは <strong>持っているプレイヤーが手を指すと相手に移動</strong> し、
+        同額入札時は <strong>先手権トークン保持者</strong> が勝ちます。 トークンは{' '}
+        <strong>持っているプレイヤーが手を指すと相手に移動</strong> し、
         持っていないプレイヤーが手を指したときは <em>そのまま残ります</em>。
         つまり「直近で打っていない側」が常にトークンを保持する仕組みです。
       </>
@@ -57,12 +58,7 @@ export function Tour({ onClose }: Props) {
   }, []);
 
   return (
-    <div
-      className="overlay"
-      role="dialog"
-      aria-label="ツアー"
-      onClick={onClose}
-    >
+    <div className="overlay" role="dialog" aria-label="ツアー" onClick={onClose}>
       <FocusTrap onEscape={onClose} autoFocusSelector=".primary">
         <div
           className="overlay-card tour-card"
@@ -79,9 +75,7 @@ export function Tour({ onClose }: Props) {
               スキップ
             </button>
             <div className="row" style={{ gap: '0.4rem' }}>
-              {step > 0 && (
-                <button onClick={() => setStep(s => s - 1)}>← 戻る</button>
-              )}
+              {step > 0 && <button onClick={() => setStep(s => s - 1)}>← 戻る</button>}
               {!lastStep ? (
                 <button className="primary" onClick={() => setStep(s => s + 1)}>
                   次へ →

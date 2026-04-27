@@ -3,11 +3,17 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import React from 'react';
-import { render, fireEvent, act } from '@testing-library/react';
+import { render } from '@testing-library/react';
+import { fireEvent } from '@testing-library/dom';
 import { App } from '../src/ui/App';
 import { Tour, shouldShowTour } from '../src/ui/Tour';
 import { saveGame, loadGame, clearSave, getPref, setPref } from '../src/ui/storage';
-import { initGame, applyPlacement, setPendingBid, resolvePendingBids } from '../src/core/gameLoop';
+import {
+  initGame,
+  applyPlacement,
+  setPendingBid,
+  resolvePendingBids,
+} from '../src/core/gameLoop';
 import { exportGame, exportGameJson, importGame } from '../src/core/serialize';
 
 beforeAll(() => {
@@ -20,7 +26,11 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  try { localStorage.clear(); } catch { /* ignore */ }
+  try {
+    localStorage.clear();
+  } catch {
+    /* ignore */
+  }
 });
 
 describe('localStorage save/restore', () => {
@@ -105,7 +115,9 @@ describe('serialize: JSON export/import', () => {
   });
 
   it('rejects bad version', () => {
-    expect(() => importGame(JSON.stringify({ v: 99, options: {}, history: [] }))).toThrow();
+    expect(() =>
+      importGame(JSON.stringify({ v: 99, options: {}, history: [] }))
+    ).toThrow();
   });
 });
 
