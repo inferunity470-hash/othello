@@ -42,14 +42,19 @@ export function applyEvent(state: GameState, ev: TurnRecord): GameState {
     s = setPendingBid(s, 'WHITE', ev.bids.WHITE);
     const out = resolvePendingBids(s);
     s = out.state;
-    if (s.phase === 'PLACING' || s.phase === 'FINAL_MOVE') {
+    // PLACING: the bid winner places, and the placement details were merged
+    // into THIS record at turn-recording time. Apply now.
+    if (s.phase === 'PLACING') {
       if (!ev.mover || !ev.move || ev.move === 'PASS') {
         throw new Error(
-          `BIDDING record at turn ${ev.turnNo} missing mover/move after resolution`
+          `BIDDING record at turn ${ev.turnNo} missing mover/move after resolution to PLACING`
         );
       }
       s = applyPlacement(s, ev.mover, ev.move.row, ev.move.col);
     }
+    // FINAL_MOVE / ENDED: the placement (if any) is recorded in the NEXT
+    // event because applyPlacement creates a fresh TurnRecord for non-PLACING
+    // phases. Nothing to do here — return so the next event handles it.
     return s;
   }
   if (ev.phaseAtStart === 'FREE_MOVE') {

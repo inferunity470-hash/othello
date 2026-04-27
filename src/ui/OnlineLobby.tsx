@@ -32,6 +32,9 @@ interface RevealData {
   winner: Color;
   payment: number;
   tieBroken: boolean;
+  /** Holder *at the moment of resolution* (i.e. before placement). */
+  holderAtResolve: Color | null;
+  nextPhase: 'PLACING' | 'FREE_MOVE' | 'FINAL_MOVE' | 'ENDED' | null;
 }
 
 export function OnlineLobby({ onExit }: Props) {
@@ -91,6 +94,8 @@ export function OnlineLobby({ onExit }: Props) {
         winner: msg.winner,
         payment: msg.payment,
         tieBroken: msg.tieBroken,
+        holderAtResolve: msg.holderAtResolve,
+        nextPhase: msg.nextPhase,
       });
       setOpponentBidIn(false);
       return;
@@ -430,6 +435,8 @@ export function OnlineLobby({ onExit }: Props) {
           winner={reveal.winner}
           payment={reveal.payment}
           tieBroken={reveal.tieBroken}
+          holderAtResolve={reveal.holderAtResolve}
+          nextPhase={reveal.nextPhase}
           onClose={() => setReveal(null)}
         />
       )}

@@ -301,6 +301,10 @@ interface RevealData {
   winner: Color;
   payment: number;
   tieBroken: boolean;
+  /** Holder at resolve time — needed to message the placement-driven token transfer. */
+  holderAtResolve: Color;
+  /** Phase that resolution transitions into (PLACING / FINAL_MOVE / ENDED). */
+  nextPhase: GameState['phase'];
 }
 
 function LocalGame({ options, onExit }: LocalGameProps) {
@@ -357,6 +361,8 @@ function LocalGame({ options, onExit }: LocalGameProps) {
         winner: out.resolution.winner,
         payment: out.resolution.payment,
         tieBroken: out.resolution.tieBroken,
+        holderAtResolve: out.state.initiativeHolder,
+        nextPhase: out.state.phase,
       });
       setBidStep('BLACK');
       // After reveal closes, show pre-place handoff if applicable
@@ -493,6 +499,8 @@ function LocalGame({ options, onExit }: LocalGameProps) {
           winner={reveal.winner}
           payment={reveal.payment}
           tieBroken={reveal.tieBroken}
+          holderAtResolve={reveal.holderAtResolve}
+          nextPhase={reveal.nextPhase}
           onClose={handleRevealClosed}
         />
       )}
@@ -573,6 +581,8 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
           winner: out.resolution.winner,
           payment: out.resolution.payment,
           tieBroken: out.resolution.tieBroken,
+          holderAtResolve: out.state.initiativeHolder,
+          nextPhase: out.state.phase,
         });
         setState(out.state);
         return;
@@ -749,6 +759,8 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
           winner={reveal.winner}
           payment={reveal.payment}
           tieBroken={reveal.tieBroken}
+          holderAtResolve={reveal.holderAtResolve}
+          nextPhase={reveal.nextPhase}
           onClose={() => setReveal(null)}
         />
       )}

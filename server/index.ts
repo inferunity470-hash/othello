@@ -261,6 +261,12 @@ wss.on('connection', ws => {
           winner: out.resolution.winner,
           payment: out.resolution.payment,
           tieBroken: out.resolution.tieBroken,
+          holderAtResolve: out.state.initiativeHolder,
+          nextPhase: out.state.phase as
+            | 'PLACING'
+            | 'FREE_MOVE'
+            | 'FINAL_MOVE'
+            | 'ENDED',
         });
         const last = room.state.history[room.state.history.length - 1];
         if (last) broadcast(room, { t: 'TURN_RECORDED', record: last });

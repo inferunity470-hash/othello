@@ -41,6 +41,17 @@ export type ServerMsg =
       winner: Color;
       payment: number;
       tieBroken: boolean;
+      /**
+       * Initiative holder at resolution time. Useful for clients to message
+       * whether the upcoming placement will transfer the token.
+       */
+      holderAtResolve: Color;
+      /**
+       * Phase the game enters right after resolution: 'PLACING' (bid winner
+       * places), 'FINAL_MOVE' (holder places), or 'ENDED' (no further move).
+       * Helps clients accurately describe the imminent token transfer.
+       */
+      nextPhase: 'PLACING' | 'FREE_MOVE' | 'FINAL_MOVE' | 'ENDED';
     }
   | {
       t: 'STONE_PLACED';

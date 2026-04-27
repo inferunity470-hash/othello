@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Color } from '../core/types';
+import { Color, GamePhase } from '../core/types';
 import { FocusTrap } from './FocusTrap';
 
 interface Props {
@@ -7,6 +7,18 @@ interface Props {
   winner: Color;
   payment: number;
   tieBroken: boolean;
+  /**
+   * Initiative holder *at the moment of bid resolution* (i.e. before any
+   * placement). Pass `null` if the caller doesn't know.
+   */
+  holderAtResolve?: Color | null;
+  /**
+   * Phase that resolution transitions into. We need this because:
+   *   - PLACING: bid winner places; transfer if winner === holderAtResolve.
+   *   - FINAL_MOVE: holder places (not winner); transfer happens (always).
+   *   - ENDED: nobody places; no transfer message.
+   */
+  nextPhase?: GamePhase | null;
   onClose: () => void;
   autoCloseMs?: number;
 }
@@ -16,6 +28,8 @@ export function BidReveal({
   winner,
   payment,
   tieBroken,
+  holderAtResolve = null,
+  nextPhase = null,
   onClose,
   autoCloseMs = 2400,
 }: Props) {
@@ -23,6 +37,23 @@ export function BidReveal({
     const t = setTimeout(onClose, autoCloseMs);
     return () => clearTimeout(t);
   }, [autoCloseMs, onClose]);
+
+  // Determine the actual placer of the upcoming move:
+  //   - PLACING: the bid winner places.
+  //   - FINAL_MOVE: the initiative holder places (not necessarily the winner).
+  //   - ENDED / others: no placement — skip transfer messaging.
+  const placer: Color | null =
+    nextPhase === 'FINAL_MOVE'
+      ? holderAtResolve
+      : nextPhase === 'PLACING'
+      ? winner
+      : nextPhase == null
+      ? winner // legacy callers without nextPhase: assume PLACING
+      : null;
+  const tokenWillTransfer =
+    holderAtResolve != null && placer != null && placer === holderAtResolve;
+  const tokenStays =
+    holderAtResolve != null && placer != null && placer !== holderAtResolve;
 
   return (
     <div
@@ -59,9 +90,20 @@ export function BidReveal({
               {winner === 'BLACK' ? '黒' : '白'}
             </strong>{' '}
             が {payment} を支払って着手
-            {tieBroken && (
+            {tokenWillTransfer && (
+              <div
+                className="muted"
+                style={{ marginTop: '0.3rem' }}
+                aria-label="トークン移動予告"
+              >
+                着手後、先手権トークンが {winner === 'BLACK' ? '白' : '黒'}{' '}
+                に移動します
+              </div>
+            )}
+            {tokenStays && (
               <div className="muted" style={{ marginTop: '0.3rem' }}>
-                先手権トークンが {winner === 'BLACK' ? '白' : '黒'} に移動
+                先手権トークンは{' '}
+                {holderAtResolve === 'BLACK' ? '黒' : '白'} のまま維持
               </div>
             )}
           </div>
