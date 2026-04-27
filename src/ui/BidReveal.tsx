@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Color, GamePhase } from '../core/types';
 import { FocusTrap } from './FocusTrap';
+import { play as playSound } from './sound';
 
 interface Props {
   bids: { BLACK: number; WHITE: number };
@@ -34,6 +35,7 @@ export function BidReveal({
   autoCloseMs = 2400,
 }: Props) {
   useEffect(() => {
+    playSound('reveal');
     const t = setTimeout(onClose, autoCloseMs);
     return () => clearTimeout(t);
   }, [autoCloseMs, onClose]);

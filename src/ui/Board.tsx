@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Board, Color, GameState, TurnRecord } from '../core/types';
 import { getFlips, isCornerSquare, legalMoves } from '../core/board';
+import { play as playSound } from './sound';
 
 interface Props {
   state: GameState;
@@ -124,6 +125,14 @@ export function BoardView({
     if (flips.size > 0) setAnimFlips(flips);
     setAnimPlace(placed);
     prevBoardRef.current = state.board;
+    // Subtle SFX: place tone, plus a softer flip tone if any stones flipped.
+    if (placed != null) {
+      playSound('place');
+      if (flips.size > 0) {
+        // small delay so the two tones don't smear
+        setTimeout(() => playSound('flip'), 70);
+      }
+    }
     const t = setTimeout(() => {
       setAnimFlips(new Set());
       setAnimPlace(null);

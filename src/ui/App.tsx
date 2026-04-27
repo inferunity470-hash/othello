@@ -26,6 +26,7 @@ import { Tour, shouldShowTour } from './Tour';
 import { AILevel, decideBid, decideMove } from '../core/ai';
 import { OnlineLobby } from './OnlineLobby';
 import { saveGame, loadGame, clearSave, getPref, setPref } from './storage';
+import { setEnabled as setSoundEnabled, isEnabled as isSoundEnabled } from './sound';
 
 type Mode =
   | { kind: 'lobby' }
@@ -48,6 +49,15 @@ export function App() {
   const [reducedMotion, setReducedMotion] = useState<boolean>(
     () => getPref('motion', 'auto') === 'reduced'
   );
+  const [sound, setSound] = useState<boolean>(
+    () => getPref('sound', 'on') !== 'off'
+  );
+
+  // Sync sound preference with engine
+  useEffect(() => {
+    setSoundEnabled(sound);
+    setPref('sound', sound ? 'on' : 'off');
+  }, [sound]);
 
   // First-time tour
   useEffect(() => {
@@ -90,6 +100,14 @@ export function App() {
             title="アニメーションを抑える"
           >
             🐢 動き軽減
+          </button>
+          <button
+            className={sound ? 'primary' : 'ghost'}
+            onClick={() => setSound(s => !s)}
+            aria-pressed={sound}
+            title="効果音"
+          >
+            {sound ? '🔊 音 ON' : '🔇 音 OFF'}
           </button>
           <button
             className="ghost"

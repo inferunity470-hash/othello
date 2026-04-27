@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Color, GameState } from '../core/types';
 import { currentMinBid, validateBid } from '../core/bidding';
+import { play as playSound } from './sound';
 
 interface Props {
   state: GameState;
@@ -89,7 +90,10 @@ export function BidPanel({ state, color, onSubmit, label }: Props) {
         <button
           className="primary"
           disabled={!validation.ok}
-          onClick={() => onSubmit(amount)}
+          onClick={() => {
+            playSound('bid');
+            onSubmit(amount);
+          }}
         >
           ✓ 入札を確定
         </button>

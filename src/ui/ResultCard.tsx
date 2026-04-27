@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Color, GameResult, GameState } from '../core/types';
 import { determineWinner } from '../core/scoring';
+import { play as playSound } from './sound';
 
 interface Props {
   state: GameState;
@@ -13,6 +14,16 @@ export function ResultCard({ state, myColor, result }: Props) {
   const isWin = myColor && myColor !== 'SPECTATE' && r.winner === myColor;
   const isLoss =
     myColor && myColor !== 'SPECTATE' && r.winner !== 'DRAW' && r.winner !== myColor;
+
+  // Play exactly one end-of-game sound when this card mounts.
+  const playedRef = useRef(false);
+  useEffect(() => {
+    if (playedRef.current) return;
+    playedRef.current = true;
+    if (r.winner === 'DRAW') playSound('gameDraw');
+    else if (myColor === 'SPECTATE' || myColor == null) playSound('gameWin');
+    else playSound(isWin ? 'gameWin' : 'gameLose');
+  }, [r.winner, myColor, isWin]);
 
   const confetti = useMemo(() => {
     if (r.winner === 'DRAW') return [];
