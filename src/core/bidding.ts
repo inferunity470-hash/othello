@@ -4,6 +4,13 @@ export interface BidResolution {
   winner: Color;
   payment: number;
   tieBroken: boolean;
+  /**
+   * Initiative holder *as of right after bid resolution*.
+   * Under the current rule, the token only moves at placement time
+   * (when the current holder places a stone). Therefore this value
+   * always equals `state.initiativeHolder` — the field is retained
+   * for backward compatibility with TurnRecord serialization.
+   */
   newInitiativeHolder: Color;
 }
 
@@ -13,7 +20,6 @@ export function resolveBids(
 ): BidResolution {
   const second = state.options.auctionType === 'second-price';
   if (bids.BLACK > bids.WHITE) {
-    // BLACK wins
     return {
       winner: 'BLACK',
       payment: second ? bids.WHITE : bids.BLACK,
@@ -22,7 +28,6 @@ export function resolveBids(
     };
   }
   if (bids.WHITE > bids.BLACK) {
-    // WHITE wins
     return {
       winner: 'WHITE',
       payment: second ? bids.BLACK : bids.WHITE,
@@ -30,14 +35,14 @@ export function resolveBids(
       newInitiativeHolder: state.initiativeHolder,
     };
   }
-  // Tie -> token holder wins, payment = both bids (they are equal).
-  // Token transfers to opponent.
+  // Tied bids: the token holder wins the auction. The actual token move
+  // happens later (at placement) per the placement-driven rule.
   const winner = state.initiativeHolder;
   return {
     winner,
     payment: bids[winner],
     tieBroken: true,
-    newInitiativeHolder: opponentOf(winner),
+    newInitiativeHolder: state.initiativeHolder,
   };
 }
 

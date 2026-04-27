@@ -21,23 +21,24 @@ describe('bid resolution', () => {
     expect(r.newInitiativeHolder).toBe('BLACK');
   });
 
-  it('tie: holder (BLACK) wins, token moves to WHITE', () => {
+  it('tie: holder (BLACK) wins; token unchanged at resolve, moves on placement', () => {
     const s = initGame();
     const r = resolveBids(s, { BLACK: 10, WHITE: 10 });
     expect(r.winner).toBe('BLACK');
     expect(r.payment).toBe(10);
     expect(r.tieBroken).toBe(true);
-    expect(r.newInitiativeHolder).toBe('WHITE');
+    // Under placement-driven rule, resolve does not move the token.
+    expect(r.newInitiativeHolder).toBe('BLACK');
   });
 
-  it('tie: holder (WHITE) wins, token moves to BLACK', () => {
+  it('tie: holder (WHITE) wins; token unchanged at resolve', () => {
     let s = initGame();
     s = { ...s, initiativeHolder: 'WHITE' };
     const r = resolveBids(s, { BLACK: 0, WHITE: 0 });
     expect(r.winner).toBe('WHITE');
     expect(r.payment).toBe(0);
     expect(r.tieBroken).toBe(true);
-    expect(r.newInitiativeHolder).toBe('BLACK');
+    expect(r.newInitiativeHolder).toBe('WHITE');
   });
 });
 

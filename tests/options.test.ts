@@ -55,13 +55,14 @@ describe('second-price (Vickrey) auction', () => {
     expect(r.payment).toBe(5);
   });
 
-  it('tie still pays own bid (= opponent), token transfers', () => {
+  it('tie still pays own bid (= opponent), token unchanged at resolve', () => {
     const s = initGame({ auctionType: 'second-price' });
     const r = resolveBids(s, { BLACK: 50, WHITE: 50 });
     expect(r.winner).toBe('BLACK');
     expect(r.payment).toBe(50);
     expect(r.tieBroken).toBe(true);
-    expect(r.newInitiativeHolder).toBe('WHITE');
+    // Token only moves when the holder actually places a stone.
+    expect(r.newInitiativeHolder).toBe('BLACK');
   });
 
   it('full second-price game completes', () => {

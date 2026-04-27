@@ -225,6 +225,13 @@ export function applyPlacement(
   };
   if (bonus > 0) newPlayers[mover].chips += bonus;
 
+  // Initiative-token transfer rule:
+  //   - If the mover currently holds the token, it transfers to the opponent.
+  //   - If the mover does not hold the token, it stays with the current holder.
+  // This applies uniformly to PLACING, FREE_MOVE, and FINAL_MOVE.
+  const newInitiativeHolder =
+    mover === state.initiativeHolder ? opponentOf(mover) : state.initiativeHolder;
+
   const history = state.history.slice();
   if (state.phase === 'PLACING') {
     // Attach to the most recent BIDDING record
@@ -241,6 +248,7 @@ export function applyPlacement(
       BLACK: newPlayers.BLACK.chips,
       WHITE: newPlayers.WHITE.chips,
     };
+    last.initiativeAfter = newInitiativeHolder;
     history[idx] = last;
   } else {
     history.push({
@@ -251,7 +259,7 @@ export function applyPlacement(
       flipped,
       cornerBonusTo: bonus > 0 ? mover : undefined,
       cornerBonusCount: bonus > 0 ? cornerCount : undefined,
-      initiativeAfter: state.initiativeHolder,
+      initiativeAfter: newInitiativeHolder,
       chipsAfter: {
         BLACK: newPlayers.BLACK.chips,
         WHITE: newPlayers.WHITE.chips,
@@ -264,6 +272,7 @@ export function applyPlacement(
     ...state,
     board: newBoard,
     players: newPlayers,
+    initiativeHolder: newInitiativeHolder,
     history,
     lastMoveBy: mover,
   };

@@ -30,15 +30,44 @@ describe('game loop basics', () => {
     expect(out.state.history).toHaveLength(1);
   });
 
-  it('tie: holder wins, token moves; payment deducted', () => {
+  it('tie: holder wins, token transfers on placement, payment deducted', () => {
     let s = initGame();
     s = setPendingBid(s, 'BLACK', 10);
     s = setPendingBid(s, 'WHITE', 10);
     const out = resolvePendingBids(s);
     expect(out.resolution.winner).toBe('BLACK');
     expect(out.resolution.tieBroken).toBe(true);
-    expect(out.state.initiativeHolder).toBe('WHITE');
+    // Token unchanged at resolve under placement-driven rule.
+    expect(out.state.initiativeHolder).toBe('BLACK');
     expect(out.state.players.BLACK.chips).toBe(190);
+    // Place black's stone - holder placed, so token moves to white.
+    let s2 = out.state;
+    const m = legalMoves(s2.board, 'BLACK')[0];
+    s2 = applyPlacement(s2, 'BLACK', m.row, m.col);
+    expect(s2.initiativeHolder).toBe('WHITE');
+  });
+
+  it('non-holder places: token stays with holder', () => {
+    let s = initGame(); // holder = BLACK
+    s = setPendingBid(s, 'BLACK', 0);
+    s = setPendingBid(s, 'WHITE', 5);
+    s = resolvePendingBids(s).state;
+    expect(s.initiativeHolder).toBe('BLACK'); // unchanged at resolve
+    // White places (non-holder), token stays with black
+    const m = legalMoves(s.board, 'WHITE')[0];
+    s = applyPlacement(s, 'WHITE', m.row, m.col);
+    expect(s.initiativeHolder).toBe('BLACK');
+  });
+
+  it('holder places (unequal bids): token transfers', () => {
+    let s = initGame(); // holder = BLACK
+    s = setPendingBid(s, 'BLACK', 10);
+    s = setPendingBid(s, 'WHITE', 5);
+    s = resolvePendingBids(s).state;
+    expect(s.initiativeHolder).toBe('BLACK');
+    const m = legalMoves(s.board, 'BLACK')[0];
+    s = applyPlacement(s, 'BLACK', m.row, m.col);
+    expect(s.initiativeHolder).toBe('WHITE');
   });
 
   it('placement transitions back to BIDDING and updates board', () => {

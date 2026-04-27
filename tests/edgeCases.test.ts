@@ -62,7 +62,8 @@ describe('edge cases E1-E15', () => {
     });
     expect(r.resolution.tieBroken).toBe(true);
     expect(r.resolution.winner).toBe('BLACK');
-    expect(r.state.initiativeHolder).toBe('WHITE');
+    // Token transfer is now placement-driven; resolve does not move it.
+    expect(r.state.initiativeHolder).toBe('BLACK');
   });
 
   it('E7: both no legal moves -> BOTH_NO_MOVES termination', () => {
@@ -75,23 +76,28 @@ describe('edge cases E1-E15', () => {
     expect(next.endReason).toBe('BOTH_NO_MOVES');
   });
 
-  it('E8: consecutive ties swap token each turn', () => {
+  it('E8: consecutive ties — token transfers each placement', () => {
     let s = initGame({ initialChips: 50 });
-    // tie 1: black holder, both bid 5 -> black wins, token to white
+    // tie 1: black holder, both bid 5 -> black wins, token unchanged at resolve
     s = setPendingBid(s, 'BLACK', 5);
     s = setPendingBid(s, 'WHITE', 5);
     let out = resolvePendingBids(s);
     s = out.state;
-    expect(s.initiativeHolder).toBe('WHITE');
-    // Place black move
+    expect(s.initiativeHolder).toBe('BLACK'); // no move at resolve
+    // Place: holder places -> token transfers to white
     let m = legalMoves(s.board, expectedMover(s)!)[0];
     s = applyPlacement(s, expectedMover(s)!, m.row, m.col);
+    expect(s.initiativeHolder).toBe('WHITE');
     expect(s.phase).toBe('BIDDING');
-    // tie 2: white holder, both bid 3 -> white wins, token back to black
+    // tie 2: white now holder; both bid 3 -> white wins
     s = setPendingBid(s, 'BLACK', 3);
     s = setPendingBid(s, 'WHITE', 3);
     out = resolvePendingBids(s);
     s = out.state;
+    expect(s.initiativeHolder).toBe('WHITE');
+    // Place: holder (white) places -> token back to black
+    m = legalMoves(s.board, expectedMover(s)!)[0];
+    s = applyPlacement(s, expectedMover(s)!, m.row, m.col);
     expect(s.initiativeHolder).toBe('BLACK');
   });
 
