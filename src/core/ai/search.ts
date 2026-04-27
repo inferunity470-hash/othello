@@ -82,10 +82,14 @@ function countEmpty(board: Board): number {
   return n;
 }
 
+/**
+ * Exact endgame solver with α-β. Returns score from `color`'s point of view
+ * (negamax convention) — when both sides have passed, this is the exact stone
+ * difference for `color` × 1000.
+ */
 function exactEndgame(
   board: Board,
   color: Color,
-  rootColor: Color,
   alpha: number,
   beta: number,
   passed: boolean,
@@ -93,28 +97,20 @@ function exactEndgame(
 ): number {
   nodes++;
   if (Date.now() > stopAt) {
-    return evaluateBoard(board, rootColor);
+    return evaluateBoard(board, color);
   }
   const moves = legalMoves(board, color);
   if (moves.length === 0) {
     if (passed) {
-      // Game over: return exact stone difference (positive = better for rootColor)
+      // Game over: stone diff from the current side's POV
       const { BLACK, WHITE } = countStones(board);
-      const mine = rootColor === 'BLACK' ? BLACK : WHITE;
-      const theirs = rootColor === 'BLACK' ? WHITE : BLACK;
+      const mine = color === 'BLACK' ? BLACK : WHITE;
+      const theirs = color === 'BLACK' ? WHITE : BLACK;
       return (mine - theirs) * 1000;
     }
-    return -exactEndgame(
-      board,
-      opponentOf(color),
-      rootColor,
-      -beta,
-      -alpha,
-      true,
-      ply + 1
-    );
+    return -exactEndgame(board, opponentOf(color), -beta, -alpha, true, ply + 1);
   }
-  // Move ordering by quick eval after move (we just sort by flip count for cheap)
+  // Move ordering: corners first (cheap heuristic for endgame)
   moves.sort((a, b) => {
     const aCorner = isCorner(a.row, a.col) ? 1 : 0;
     const bCorner = isCorner(b.row, b.col) ? 1 : 0;
@@ -127,7 +123,6 @@ function exactEndgame(
     const score = -exactEndgame(
       newBoard,
       opponentOf(color),
-      rootColor,
       -beta,
       -alpha,
       false,
@@ -272,7 +267,7 @@ export function strongSearch(
 
   // Exact endgame solve when feasible
   if (empty <= options.exactEndgameEmpties) {
-    const score = exactEndgame(board, color, color, -INF, INF, false, 0);
+    const score = exactEndgame(board, color, -INF, INF, false, 0);
     // We need the best move; do a one-ply expansion to pick.
     const moves = legalMoves(board, color);
     if (moves.length === 0) {
@@ -282,7 +277,7 @@ export function strongSearch(
     let bestScore = -INF;
     for (const m of moves) {
       const { newBoard } = applyMove(board, color, m.row, m.col);
-      const s = -exactEndgame(newBoard, opponentOf(color), color, -INF, INF, false, 1);
+      const s = -exactEndgame(newBoard, opponentOf(color), -INF, INF, false, 1);
       if (s > bestScore) {
         bestScore = s;
         bestM = m;
