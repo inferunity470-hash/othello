@@ -13,10 +13,10 @@ import {
   resolvePendingBids,
   setPendingBid,
   skipFinalMoveIfNoLegal,
-} from './src/core/gameLoop.ts';
-import { decideBid, decideMove, makeRng } from './src/core/ai/index.ts';
-import { hasLegalMove, countStones, legalMoves } from './src/core/board.ts';
-import { ttClear } from './src/core/ai/tt.ts';
+} from '../src/core/gameLoop.ts';
+import { decideBid, decideMove, makeRng } from '../src/core/ai/index.ts';
+import { hasLegalMove, countStones, legalMoves } from '../src/core/board.ts';
+import { ttClear } from '../src/core/ai/tt.ts';
 
 const LEVELS = ['intermediate', 'advanced'] as const;
 const CHIP_OPTIONS = [50, 100, 200];
@@ -76,7 +76,8 @@ function playOne(black: any, white: any, initialChips: number, seed: number) {
       const out = resolvePendingBids(s);
       s = out.state;
       stats.bidTurns++;
-      if (out.resolution.winner === 'BLACK') stats.paymentByBlack += out.resolution.payment;
+      if (out.resolution.winner === 'BLACK')
+        stats.paymentByBlack += out.resolution.payment;
       else stats.paymentByWhite += out.resolution.payment;
       if (s.phase === 'PLACING' || s.phase === 'FINAL_MOVE') {
         const mover = expectedMover(s)!;
@@ -132,16 +133,27 @@ function playOne(black: any, white: any, initialChips: number, seed: number) {
 
 function summarize(label: string, results: any[]) {
   const n = results.length;
-  let bWins = 0, wWins = 0, draws = 0;
-  let avgTokenTransfers = 0, avgTokenStayed = 0;
-  let avgTieBids = 0, avgZeroZero = 0, avgReverseAuction = 0;
-  let avgBidTurns = 0, avgTurns = 0;
-  let exhausted = 0, bothNoMoves = 0;
-  let totalPayBlack = 0, totalPayWhite = 0;
-  let totalBidsBlack = 0, totalBidsWhite = 0;
+  let bWins = 0,
+    wWins = 0,
+    draws = 0;
+  let avgTokenTransfers = 0,
+    avgTokenStayed = 0;
+  let avgTieBids = 0,
+    avgZeroZero = 0,
+    avgReverseAuction = 0;
+  let avgBidTurns = 0,
+    avgTurns = 0;
+  let exhausted = 0,
+    bothNoMoves = 0;
+  let totalPayBlack = 0,
+    totalPayWhite = 0;
+  let totalBidsBlack = 0,
+    totalBidsWhite = 0;
   let blackHoldsTokenAtEnd = 0;
-  let avgBlackChipsLeft = 0, avgWhiteChipsLeft = 0;
-  let avgBlackStones = 0, avgWhiteStones = 0;
+  let avgBlackChipsLeft = 0,
+    avgWhiteChipsLeft = 0;
+  let avgBlackStones = 0,
+    avgWhiteStones = 0;
   for (const r of results) {
     if (r.winnerColor === 'BLACK') bWins++;
     else if (r.winnerColor === 'WHITE') wWins++;
@@ -168,15 +180,30 @@ function summarize(label: string, results: any[]) {
   const fmt = (x: number) => (x / n).toFixed(2);
   const pct = (x: number) => ((x / n) * 100).toFixed(1) + '%';
   console.log(`\n=== ${label} (${n} games) ===`);
-  console.log(`Win rate:    BLACK=${pct(bWins)}  WHITE=${pct(wWins)}  DRAW=${pct(draws)}`);
+  console.log(
+    `Win rate:    BLACK=${pct(bWins)}  WHITE=${pct(wWins)}  DRAW=${pct(draws)}`
+  );
   console.log(`Avg stones:  BLACK=${fmt(avgBlackStones)}  WHITE=${fmt(avgWhiteStones)}`);
-  console.log(`Chips left:  BLACK=${fmt(avgBlackChipsLeft)}  WHITE=${fmt(avgWhiteChipsLeft)}`);
-  console.log(`End reason:  CHIPS_EXHAUSTED=${pct(exhausted)}  BOTH_NO_MOVES=${pct(bothNoMoves)}`);
+  console.log(
+    `Chips left:  BLACK=${fmt(avgBlackChipsLeft)}  WHITE=${fmt(avgWhiteChipsLeft)}`
+  );
+  console.log(
+    `End reason:  CHIPS_EXHAUSTED=${pct(exhausted)}  BOTH_NO_MOVES=${pct(bothNoMoves)}`
+  );
   console.log(`Avg turns:   total=${fmt(avgTurns)}  bid turns=${fmt(avgBidTurns)}`);
-  const transferPct = (avgTokenTransfers / Math.max(1, avgTokenStayed + avgTokenTransfers) * 100).toFixed(0);
-  console.log(`Token:       transfers=${fmt(avgTokenTransfers)}  stayed=${fmt(avgTokenStayed)}  ${transferPct}% transfer`);
-  console.log(`Token@end:   BLACK=${pct(blackHoldsTokenAtEnd)}  WHITE=${pct(n - blackHoldsTokenAtEnd)}`);
-  console.log(`Bidding:     tie bids=${fmt(avgTieBids)}  0-0 bids=${fmt(avgZeroZero)}  reverse auctions=${fmt(avgReverseAuction)}`);
+  const transferPct = (
+    (avgTokenTransfers / Math.max(1, avgTokenStayed + avgTokenTransfers)) *
+    100
+  ).toFixed(0);
+  console.log(
+    `Token:       transfers=${fmt(avgTokenTransfers)}  stayed=${fmt(avgTokenStayed)}  ${transferPct}% transfer`
+  );
+  console.log(
+    `Token@end:   BLACK=${pct(blackHoldsTokenAtEnd)}  WHITE=${pct(n - blackHoldsTokenAtEnd)}`
+  );
+  console.log(
+    `Bidding:     tie bids=${fmt(avgTieBids)}  0-0 bids=${fmt(avgZeroZero)}  reverse auctions=${fmt(avgReverseAuction)}`
+  );
   console.log(`Payment avg: BLACK=${fmt(totalPayBlack)}  WHITE=${fmt(totalPayWhite)}`);
   console.log(`Bid total:   BLACK=${fmt(totalBidsBlack)}  WHITE=${fmt(totalBidsWhite)}`);
   return { bWins, wWins, draws, n };
@@ -193,16 +220,16 @@ for (const chips of CHIP_OPTIONS) {
       games.push(stats);
     }
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    const summary = summarize(
-      `B=${lvl} W=${lvl} chips=${chips} (${elapsed}s)`,
-      games
-    );
+    const summary = summarize(`B=${lvl} W=${lvl} chips=${chips} (${elapsed}s)`, games);
     allResults.push({ black: lvl, white: lvl, chips, ...summary });
   }
 }
 
 console.log('\n=== Aggregate first-mover advantage ===');
-let bAll = 0, wAll = 0, dAll = 0, nAll = 0;
+let bAll = 0,
+  wAll = 0,
+  dAll = 0,
+  nAll = 0;
 for (const r of allResults) {
   bAll += r.bWins;
   wAll += r.wWins;

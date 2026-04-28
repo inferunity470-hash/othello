@@ -17,8 +17,12 @@ export interface AIBidContext {
  * losing the initiative token. Under the new rule, the holder loses the
  * token whenever they place a stone, so the AI should be slightly less
  * eager to win bids when it currently holds the token.
+ *
+ * Empirically tuned: 18 was too high — caused holders to bid 0 in nearly
+ * symmetric positions, leading to mechanical alternation and short games.
+ * 6 keeps the bias gentle without crippling competitive bidding.
  */
-const TOKEN_COST = 18;
+const TOKEN_COST = 6;
 
 function deltaValueOfMoving(
   state: GameState,
@@ -200,26 +204,36 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   if (level === 'advanced') {
     const delta = deltaValueOfMoving(state, color, 3);
     const adjusted = isHolder ? delta - TOKEN_COST : delta;
-    if (adjusted <= 0) return clampBid(0, state, color);
-    const scaled = Math.floor(adjusted * 0.1) + 1;
-    const cap = Math.max(1, Math.floor(chips * 0.5));
-    return clampBid(Math.min(scaled, cap), state, color);
+    // Always bid a base amount: never let opponent steal cheaply.
+    const base = Math.max(2, Math.floor(chips * 0.08));
+    let bid = base;
+    if (adjusted > 0) {
+      bid = Math.max(base, Math.floor(adjusted * 0.12) + 1);
+    } else if (adjusted < -200) {
+      // Strongly negative ⇒ we *want* opponent to play; small reverse-auction bid
+      bid = Math.max(0, Math.floor(-adjusted * 0.04));
+    }
+    const cap = Math.max(1, Math.floor(chips * 0.55));
+    return clampBid(Math.min(bid, cap), state, color);
   }
 
-  // oni: use strong search for delta evaluation, factor in token, willing
-  // to spend up to 70% of stack on critical moves.
+  // oni: deeper strong-search evaluation, more aggressive bidding, willing
+  // to spend up to 75% of stack on critical moves.
   const empties = countEmpty(state.board);
-  const depth = empties <= 14 ? 8 : empties <= 22 ? 6 : 5;
+  const depth = empties <= 14 ? 9 : empties <= 22 ? 8 : 7;
   const delta = deltaValueOfMoving(state, color, depth, true);
   const adjusted = isHolder ? delta - TOKEN_COST : delta;
-  if (adjusted <= 0) {
-    // Reverse-auction: small bid to pressure opponent into placing.
-    const reverseBid = Math.min(chips, Math.max(0, Math.floor(-adjusted * 0.04)));
-    return clampBid(reverseBid, state, color);
+  // Always participate with a base bid; oni doesn't get cheap-stolen.
+  const base = Math.max(3, Math.floor(chips * 0.1));
+  let bid = base;
+  if (adjusted > 0) {
+    bid = Math.max(base, Math.floor(adjusted * 0.16) + 2);
+  } else if (adjusted < -150) {
+    // Genuine reverse-auction: push opponent into placing
+    bid = Math.max(0, Math.floor(-adjusted * 0.05));
   }
-  const cap = Math.max(1, Math.floor(chips * 0.7));
-  const scaled = Math.floor(adjusted * 0.13) + 1;
-  return clampBid(Math.min(scaled, cap), state, color);
+  const cap = Math.max(1, Math.floor(chips * 0.75));
+  return clampBid(Math.min(bid, cap), state, color);
 }
 
 export function decideMove(
