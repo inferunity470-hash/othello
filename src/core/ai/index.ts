@@ -216,34 +216,54 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     } else if (adjusted < -200) {
       bid = Math.max(0, Math.floor(-adjusted * 0.04));
     }
-    // Critical-move defense: triggers when *either*
-    //   (a) |delta| is large (winning vs losing has dramatic consequences), OR
-    //   (b) opp's best move would put us in a deeply bad position (oppBest
-    //       very negative — they could flip everything etc.)
-    // Defends against an opponent's all-in attempt by bidding at our cap.
+    // Tiered defence — same scheme as oni but shallower thresholds.
+    const oppChips = state.players[opponentOf(color)].chips;
     const cap = Math.max(1, Math.floor(chips * 0.9));
-    if (Math.abs(delta) >= 250 || oppBest < -200) {
-      bid = Math.max(bid, cap);
-    }
+    const tierMate = Math.min(oppChips + 1, cap);
+    const tierSevere = Math.min(oppChips, Math.floor(chips * 0.55));
+    const tierModerate = Math.min(oppChips, Math.floor(chips * 0.3));
+    const isMate = Math.abs(delta) >= 5000 || oppBest < -3000;
+    const isSevere = Math.abs(delta) >= 1200 || oppBest < -1000;
+    const isModerate = Math.abs(delta) >= 250 || oppBest < -200;
+    if (isMate) bid = Math.max(bid, tierMate);
+    else if (isSevere) bid = Math.max(bid, tierSevere);
+    else if (isModerate) bid = Math.max(bid, tierModerate);
     return clampBid(Math.min(bid, cap), state, color);
   }
 
-  // oni: deep strong-search, more aggressive bidding, full-cap defence.
+  // oni: deeper search + tiered defence. Cap is constrained by oppChips
+  // so we never spend more than the maximum opp could possibly bid.
   const empties = countEmpty(state.board);
   const depth = empties <= 14 ? 9 : empties <= 22 ? 8 : 7;
   const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true);
   const adjusted = isHolder ? delta - TOKEN_COST : delta;
-  const base = Math.max(3, Math.floor(chips * 0.1));
+  // Sparse-board (early opening) base: bid higher to avoid the
+  // opponent matching us at the base and stealing T1 via tie-as-holder.
+  const sparse = empties >= 50;
+  const base = sparse
+    ? Math.max(3, Math.floor(chips * 0.16) + 1)
+    : Math.max(3, Math.floor(chips * 0.1));
   let bid = base;
   if (adjusted > 0) {
     bid = Math.max(base, Math.floor(adjusted * 0.16) + 2);
   } else if (adjusted < -150) {
     bid = Math.max(0, Math.floor(-adjusted * 0.05));
   }
+  const oppChips = state.players[opponentOf(color)].chips;
   const cap = Math.max(1, Math.floor(chips * 0.9));
-  if (Math.abs(delta) >= 350 || oppBest < -250) {
-    bid = Math.max(bid, cap);
-  }
+  // Tiered defence — never exceed oppChips since opp can never out-bid that.
+  // The matching+1 trick wins outright (vs holder=opp), tying at oppChips
+  // wins iff we're holder. Reserve full cap for genuine game-decisive
+  // positions (≥ 5000 eval points = wipe-out level).
+  const tierMate = Math.min(oppChips + 1, cap);
+  const tierSevere = Math.min(oppChips, Math.floor(chips * 0.6));
+  const tierModerate = Math.min(oppChips, Math.floor(chips * 0.35));
+  const isMate = Math.abs(delta) >= 5000 || oppBest < -3000;
+  const isSevere = Math.abs(delta) >= 1500 || oppBest < -1200;
+  const isModerate = Math.abs(delta) >= 350 || oppBest < -250;
+  if (isMate) bid = Math.max(bid, tierMate);
+  else if (isSevere) bid = Math.max(bid, tierSevere);
+  else if (isModerate) bid = Math.max(bid, tierModerate);
   return clampBid(Math.min(bid, cap), state, color);
 }
 
