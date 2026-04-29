@@ -3,7 +3,7 @@
  * appends a record. We keep the latest N records to bound storage.
  */
 
-import { GameResult, GameState, TurnRecord } from '../core/types';
+import { GameResult, GameState } from '../core/types';
 
 const KEY = 'othello-bidding:stats:v1';
 const MAX_RECORDS = 100;
@@ -151,7 +151,8 @@ export function aggregate(records: GameRecord[]): AggregatedStats {
       myReverse += r.reverseAuctions[r.myColor];
     }
   }
-  // longest current streak
+  // Current streak walking back from the most recent rated game. Draws
+  // and spectated games break the streak.
   let longestKind: 'win' | 'loss' | 'none' = 'none';
   let longestN = 0;
   let curKind: 'win' | 'loss' | null = null;
@@ -159,8 +160,8 @@ export function aggregate(records: GameRecord[]): AggregatedStats {
   for (let i = records.length - 1; i >= 0; i--) {
     const r = records[i];
     if (!r.myColor || r.myColor === 'SPECTATE') break;
-    const won = r.result.winner === r.myColor;
-    const kind: 'win' | 'loss' = won ? 'win' : r.result.winner === 'DRAW' ? null! : 'loss';
+    if (r.result.winner === 'DRAW') break;
+    const kind: 'win' | 'loss' = r.result.winner === r.myColor ? 'win' : 'loss';
     if (curKind === null) {
       curKind = kind;
       curN = 1;

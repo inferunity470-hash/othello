@@ -46,7 +46,18 @@ export function ShareDialog({ state, onClose }: Props) {
           <h2 style={{ marginTop: 0 }}>📤 対局を共有</h2>
           <div className="stack" style={{ gap: '0.4rem' }}>
             <label>
-              <span className="muted">URL (フラグメント形式)</span>
+              <span className="muted">
+                URL (フラグメント形式) — {url.length.toLocaleString()} 文字
+                {url.length > 8000 && (
+                  <span
+                    className="pill warn"
+                    style={{ marginLeft: '0.4rem' }}
+                    title="一部のチャットアプリ等では長すぎる URL が切り詰められる可能性があります。JSONダウンロードを推奨。"
+                  >
+                    長すぎ?
+                  </span>
+                )}
+              </span>
               <textarea
                 readOnly
                 value={url}

@@ -65,7 +65,10 @@ export function TopMovesHint({ state, forColor, topN = 3 }: Props) {
               <span
                 className="top-moves-bar-fill"
                 style={{
-                  width: `${Math.max(8, ((m.score - best + 200) / 200) * 100)}%`,
+                  width: `${Math.max(
+                    8,
+                    Math.min(100, ((m.score - best + 200) / 200) * 100)
+                  )}%`,
                 }}
               />
             </span>
