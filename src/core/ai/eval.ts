@@ -341,7 +341,15 @@ export function alphabeta(
   const moves = legalMoves(board, color);
   if (moves.length === 0) {
     if (passedOnce) {
-      return { score: evaluateBoard(board, rootColor) };
+      // Game over: return exact stone difference from rootColor's POV.
+      // This is critical for accurate evaluation — the phase-weighted
+      // evaluator can severely mis-score wipe-out positions (e.g. 0 stones
+      // remaining for one side) because stoneDifference is omitted in the
+      // opening phase weights.
+      const { BLACK, WHITE } = countStones(board);
+      const mine = rootColor === 'BLACK' ? BLACK : WHITE;
+      const theirs = rootColor === 'BLACK' ? WHITE : BLACK;
+      return { score: (mine - theirs) * 1000 };
     }
     const r = alphabeta(
       board,

@@ -29,8 +29,10 @@ function deltaValueOfMoving(
   color: Color,
   depth: number,
   useStrong = false
-): number {
+): { delta: number; myBest: number; oppBest: number } {
   const opp = opponentOf(color);
+  let myScore: number;
+  let oppScore: number;
   if (useStrong) {
     const me = strongSearch(state.board, color, {
       maxDepth: depth,
@@ -40,13 +42,17 @@ function deltaValueOfMoving(
       maxDepth: depth,
       exactEndgameEmpties: 0,
     });
-    // strongSearch returns scores from the searcher's POV. Convert opp score
-    // to color's POV by negation.
-    return me.score - -them.score;
+    // strongSearch returns scores from the searcher's POV. Convert opp's
+    // score to `color`'s POV by negation.
+    myScore = me.score;
+    oppScore = -them.score;
+  } else {
+    const myBest = alphabeta(state.board, color, depth, -Infinity, Infinity, color);
+    const oppBest = alphabeta(state.board, opp, depth, -Infinity, Infinity, color);
+    myScore = myBest.score;
+    oppScore = oppBest.score;
   }
-  const myBest = alphabeta(state.board, color, depth, -Infinity, Infinity, color);
-  const oppBest = alphabeta(state.board, opp, depth, -Infinity, Infinity, color);
-  return myBest.score - oppBest.score;
+  return { delta: myScore - oppScore, myBest: myScore, oppBest: oppScore };
 }
 
 function clampBid(amount: number, state: GameState, color: Color): number {
@@ -187,8 +193,7 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   }
 
   if (level === 'intermediate') {
-    const delta = deltaValueOfMoving(state, color, 2);
-    // Adjust for token cost: holder's effective gain is reduced.
+    const { delta } = deltaValueOfMoving(state, color, 2);
     const adjusted = isHolder ? delta - TOKEN_COST : delta;
     const base = Math.max(2, Math.floor(chips * 0.12));
     let bid = base;
@@ -202,37 +207,43 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   }
 
   if (level === 'advanced') {
-    const delta = deltaValueOfMoving(state, color, 3);
+    const { delta, oppBest } = deltaValueOfMoving(state, color, 3);
     const adjusted = isHolder ? delta - TOKEN_COST : delta;
-    // Always bid a base amount: never let opponent steal cheaply.
     const base = Math.max(2, Math.floor(chips * 0.08));
     let bid = base;
     if (adjusted > 0) {
       bid = Math.max(base, Math.floor(adjusted * 0.12) + 1);
     } else if (adjusted < -200) {
-      // Strongly negative ⇒ we *want* opponent to play; small reverse-auction bid
       bid = Math.max(0, Math.floor(-adjusted * 0.04));
     }
-    const cap = Math.max(1, Math.floor(chips * 0.55));
+    // Critical-move defense: triggers when *either*
+    //   (a) |delta| is large (winning vs losing has dramatic consequences), OR
+    //   (b) opp's best move would put us in a deeply bad position (oppBest
+    //       very negative — they could flip everything etc.)
+    // Defends against an opponent's all-in attempt by bidding at our cap.
+    const cap = Math.max(1, Math.floor(chips * 0.9));
+    if (Math.abs(delta) >= 250 || oppBest < -200) {
+      bid = Math.max(bid, cap);
+    }
     return clampBid(Math.min(bid, cap), state, color);
   }
 
-  // oni: deeper strong-search evaluation, more aggressive bidding, willing
-  // to spend up to 75% of stack on critical moves.
+  // oni: deep strong-search, more aggressive bidding, full-cap defence.
   const empties = countEmpty(state.board);
   const depth = empties <= 14 ? 9 : empties <= 22 ? 8 : 7;
-  const delta = deltaValueOfMoving(state, color, depth, true);
+  const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true);
   const adjusted = isHolder ? delta - TOKEN_COST : delta;
-  // Always participate with a base bid; oni doesn't get cheap-stolen.
   const base = Math.max(3, Math.floor(chips * 0.1));
   let bid = base;
   if (adjusted > 0) {
     bid = Math.max(base, Math.floor(adjusted * 0.16) + 2);
   } else if (adjusted < -150) {
-    // Genuine reverse-auction: push opponent into placing
     bid = Math.max(0, Math.floor(-adjusted * 0.05));
   }
-  const cap = Math.max(1, Math.floor(chips * 0.75));
+  const cap = Math.max(1, Math.floor(chips * 0.9));
+  if (Math.abs(delta) >= 350 || oppBest < -250) {
+    bid = Math.max(bid, cap);
+  }
   return clampBid(Math.min(bid, cap), state, color);
 }
 
