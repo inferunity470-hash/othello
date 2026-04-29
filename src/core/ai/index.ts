@@ -1,7 +1,7 @@
 import { Color, GameState, opponentOf } from '../types';
-import { applyMove, hasLegalMove, legalMoves } from '../board';
+import { applyMove, legalMoves } from '../board';
 import { currentMinBid } from '../bidding';
-import { alphabeta, evaluateBoard } from './eval';
+import { alphabeta, mobilityCount } from './eval';
 import { strongSearch } from './search';
 
 export type AILevel = 'beginner' | 'intermediate' | 'advanced' | 'oni';
@@ -14,9 +14,9 @@ export interface AIBidContext {
 
 /**
  * "Token cost" — how many board-eval points the AI implicitly pays for
- * losing the initiative token. Under the new rule, the holder loses the
- * token whenever they place a stone, so the AI should be slightly less
- * eager to win bids when it currently holds the token.
+ * losing the initiative token. Under the placement-driven rule, the holder
+ * loses the token whenever they place a stone, so the AI should be slightly
+ * less eager to win bids when it currently holds the token.
  *
  * Empirically tuned: 18 was too high — caused holders to bid 0 in nearly
  * symmetric positions, leading to mechanical alternation and short games.
@@ -86,7 +86,9 @@ function pickGreedyMove(state: GameState, mover: Color): { row: number; col: num
     const xSquarePenalty = isXSquareNextToFreeCorner(state.board, m.row, m.col)
       ? -300
       : 0;
-    const score = flipped.length + cornerBonus + xSquarePenalty;
+    // Penalty for granting opponent many replies
+    const oppMobility = mobilityCount(newBoard, opponentOf(mover));
+    const score = flipped.length + cornerBonus + xSquarePenalty - oppMobility * 4;
     if (score > bestScore) {
       bestScore = score;
       best = m;
@@ -142,8 +144,9 @@ function pickAlphaBetaMove(
 
 function pickOniMove(state: GameState, mover: Color): { row: number; col: number } {
   const empties = countEmpty(state.board);
-  // Endgame: solve exactly when ≤ 14 empties (strong, may take a few seconds).
-  // Midgame: deep PVS with TT.
+  // Endgame: solve exactly when ≤ 16 empties.
+  // Midgame: deep PVS with TT, depth tuned to feasibility (search is ~30x
+  // faster after the eval/search rewrite).
   let maxDepth: number;
   let exactEndgameEmpties: number;
   if (empties <= 8) {
@@ -172,6 +175,106 @@ function makeRng(seed?: number): () => number {
   };
 }
 
+function countEmpty(board: import('../types').Board): number {
+  let n = 0;
+  for (const row of board) for (const c of row) if (c === null) n++;
+  return n;
+}
+
+/* ----------------------------- Bidding strategy ----------------------------- */
+
+/**
+ * Convert an eval-point value of "winning this auction" into a chip-
+ * equivalent bid. Smooth exponential saturation: small values give a
+ * small bid, large values approach (but never exceed) `decisiveCap`.
+ *
+ * Calibration:
+ *   value=0      → 0 chips
+ *   value=300    ≈ chips * 0.27
+ *   value=800    ≈ chips * 0.54
+ *   value=2000   ≈ chips * 0.78
+ *   value=5000+  ≈ chips * 0.85 (asymptote)
+ *
+ * The 800 scale matches the typical midgame eval magnitude where a
+ * decisive corner-or-wipeout swing lives.
+ */
+function evalPointsToChips(value: number, chips: number): number {
+  if (value <= 0) return 0;
+  const decisiveCap = chips * 0.85;
+  return decisiveCap * (1 - Math.exp(-value / 800));
+}
+
+/**
+ * Estimate the opponent's plausible max bid this turn from recent
+ * history. Used to bound the defense bid: bidding the full theoretical
+ * `oppChips` is wasteful when history shows the opponent only spends
+ * a fraction of their stack per turn. Falls back to oppChips when too
+ * few past bids exist to be confident.
+ */
+function estimateOppMaxBid(
+  state: GameState,
+  oppColor: Color,
+  oppChips: number
+): number {
+  const past = state.history.filter(t => t.bids != null).slice(-10);
+  if (past.length === 0) return oppChips;
+  let maxBid = 0;
+  let total = 0;
+  for (const t of past) {
+    const b = (t.bids![oppColor] as number) ?? 0;
+    if (b > maxBid) maxBid = b;
+    total += b;
+  }
+  const avg = total / past.length;
+  // Allow for escalation: 2x recent max OR 4x average OR 25% of stack,
+  // whichever is largest. Always upper-bounded by actual oppChips. The
+  // 2x multiplier covers the "escalation" pattern (e.g. 20→40→60→80) so
+  // we don't underbid when the opponent ramps each turn.
+  const estimate = Math.max(maxBid * 2, avg * 4, oppChips * 0.25);
+  return Math.min(oppChips, Math.ceil(estimate));
+}
+
+/**
+ * Tiered defence — for genuinely critical positions we override the
+ * value-based bid with a "match opponent" strategy. The cap depends on
+ * the *modelled* max-opponent-bid (history-aware) rather than the
+ * worst-case oppChips. This prevents naïve all-in defences against
+ * a human who never spends more than 30% of their stack.
+ */
+function tieredDefenseBid(
+  state: GameState,
+  color: Color,
+  delta: number,
+  oppBest: number,
+  myChips: number,
+  oppChips: number,
+  scale: 'advanced' | 'oni'
+): number {
+  const cap = Math.max(1, Math.floor(myChips * 0.92));
+  const oppMaxModel = estimateOppMaxBid(state, opponentOf(color), oppChips);
+  const tierMate = Math.min(oppMaxModel + 2, cap);
+  const tierSevereChips =
+    scale === 'oni' ? Math.floor(myChips * 0.55) : Math.floor(myChips * 0.5);
+  const tierModerateChips =
+    scale === 'oni' ? Math.floor(myChips * 0.32) : Math.floor(myChips * 0.28);
+  const tierSevere = Math.min(oppMaxModel, tierSevereChips);
+  const tierModerate = Math.min(oppMaxModel, tierModerateChips);
+  // Calibrated for the new eval ranges (post-eval rewrite).
+  const isMate = Math.abs(delta) >= 5000 || oppBest < -3000;
+  const isSevere =
+    scale === 'oni'
+      ? Math.abs(delta) >= 1500 || oppBest < -1200
+      : Math.abs(delta) >= 1200 || oppBest < -1000;
+  const isModerate =
+    scale === 'oni'
+      ? Math.abs(delta) >= 350 || oppBest < -250
+      : Math.abs(delta) >= 250 || oppBest < -200;
+  if (isMate) return tierMate;
+  if (isSevere) return tierSevere;
+  if (isModerate) return tierModerate;
+  return 0;
+}
+
 /**
  * Compute the AI's bid for the current BIDDING phase.
  *
@@ -180,12 +283,17 @@ function makeRng(seed?: number): () => number {
  * fixed eval-point penalty (TOKEN_COST). This makes higher levels more
  * willing to *not* bid as the holder, hoping the opponent takes the play
  * and loses their own token.
+ *
+ * Auction-type-aware: in Vickrey (second-price), the AI bids closer to its
+ * true valuation since dominant-strategy play is to bid honestly.
  */
 export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): number {
   const { state, color, level } = ctx;
   const chips = state.players[color].chips;
   if (chips === 0) return clampBid(0, state, color);
   const isHolder = state.initiativeHolder === color;
+  const isVickrey = state.options.auctionType === 'second-price';
+  const oppChips = state.players[opponentOf(color)].chips;
 
   if (level === 'beginner') {
     const cap = Math.max(1, Math.floor(chips * 0.15));
@@ -198,11 +306,14 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     const base = Math.max(2, Math.floor(chips * 0.12));
     let bid = base;
     if (adjusted > 0) {
-      bid = Math.max(bid, Math.floor(adjusted * 0.06));
+      const valueChips = evalPointsToChips(adjusted, chips);
+      // First-price shading or Vickrey truthfulness
+      const shade = isVickrey ? 0.85 : 0.45;
+      bid = Math.max(bid, Math.floor(valueChips * shade));
     } else if (adjusted < -300) {
       bid = Math.max(0, Math.floor(chips * 0.02));
     }
-    const cap = Math.max(1, Math.floor(chips * 0.35));
+    const cap = Math.max(1, Math.floor(chips * (isVickrey ? 0.7 : 0.4)));
     return clampBid(Math.min(bid, cap), state, color);
   }
 
@@ -212,58 +323,76 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     const base = Math.max(2, Math.floor(chips * 0.08));
     let bid = base;
     if (adjusted > 0) {
-      bid = Math.max(base, Math.floor(adjusted * 0.12) + 1);
+      const valueChips = evalPointsToChips(adjusted, chips);
+      const shade = isVickrey ? 0.9 : 0.55;
+      bid = Math.max(bid, Math.floor(valueChips * shade));
     } else if (adjusted < -200) {
       bid = Math.max(0, Math.floor(-adjusted * 0.04));
     }
-    // Tiered defence — same scheme as oni but shallower thresholds.
-    const oppChips = state.players[opponentOf(color)].chips;
-    const cap = Math.max(1, Math.floor(chips * 0.9));
-    const tierMate = Math.min(oppChips + 1, cap);
-    const tierSevere = Math.min(oppChips, Math.floor(chips * 0.55));
-    const tierModerate = Math.min(oppChips, Math.floor(chips * 0.3));
-    const isMate = Math.abs(delta) >= 5000 || oppBest < -3000;
-    const isSevere = Math.abs(delta) >= 1200 || oppBest < -1000;
-    const isModerate = Math.abs(delta) >= 250 || oppBest < -200;
-    if (isMate) bid = Math.max(bid, tierMate);
-    else if (isSevere) bid = Math.max(bid, tierSevere);
-    else if (isModerate) bid = Math.max(bid, tierModerate);
+    // Tiered defence: bid based on modelled opponent cap, never wasteful.
+    const defenseBid = tieredDefenseBid(
+      state,
+      color,
+      delta,
+      oppBest,
+      chips,
+      oppChips,
+      'advanced'
+    );
+    if (defenseBid > 0) bid = Math.max(bid, defenseBid);
+    const cap = Math.max(1, Math.floor(chips * 0.92));
     return clampBid(Math.min(bid, cap), state, color);
   }
 
-  // oni: deeper search + tiered defence. Cap is constrained by oppChips
-  // so we never spend more than the maximum opp could possibly bid.
+  // oni
   const empties = countEmpty(state.board);
   const depth = empties <= 14 ? 9 : empties <= 22 ? 8 : 7;
   const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true);
   const adjusted = isHolder ? delta - TOKEN_COST : delta;
+
   // Sparse-board (early opening) base: bid higher to avoid the
   // opponent matching us at the base and stealing T1 via tie-as-holder.
   const sparse = empties >= 50;
-  const base = sparse
+  const baseBid = sparse
     ? Math.max(3, Math.floor(chips * 0.16) + 1)
     : Math.max(3, Math.floor(chips * 0.1));
-  let bid = base;
+
+  let bid = baseBid;
+
+  // Endgame chip-banking: when fewer empties remain than estimated bids,
+  // it's safe to spend. When many remain, conserve.
+  // Estimated remaining bidding turns ≈ empties / 2.
+  const estimatedRemainingBids = Math.max(1, Math.ceil(empties / 2));
+  const conservation =
+    estimatedRemainingBids >= 12 ? 0.85 : estimatedRemainingBids >= 6 ? 0.95 : 1.0;
+
   if (adjusted > 0) {
-    bid = Math.max(base, Math.floor(adjusted * 0.16) + 2);
+    const valueChips = evalPointsToChips(adjusted, chips);
+    // First-price: shade ~60% of value (slightly higher than naive
+    // equilibrium because the placement-driven rule gives extra value to
+    // winning when we're not the holder).
+    // Vickrey: bid 92% of value (close to truthful but reserve tiny margin).
+    const shade = isVickrey ? 0.92 : 0.6;
+    const target = Math.floor(valueChips * shade * conservation);
+    bid = Math.max(bid, target + 2);
   } else if (adjusted < -150) {
-    bid = Math.max(0, Math.floor(-adjusted * 0.05));
+    // We don't want to win — minimize bid (but still positive base).
+    bid = Math.max(0, Math.floor(-adjusted * 0.04));
   }
-  const oppChips = state.players[opponentOf(color)].chips;
-  const cap = Math.max(1, Math.floor(chips * 0.9));
-  // Tiered defence — never exceed oppChips since opp can never out-bid that.
-  // The matching+1 trick wins outright (vs holder=opp), tying at oppChips
-  // wins iff we're holder. Reserve full cap for genuine game-decisive
-  // positions (≥ 5000 eval points = wipe-out level).
-  const tierMate = Math.min(oppChips + 1, cap);
-  const tierSevere = Math.min(oppChips, Math.floor(chips * 0.6));
-  const tierModerate = Math.min(oppChips, Math.floor(chips * 0.35));
-  const isMate = Math.abs(delta) >= 5000 || oppBest < -3000;
-  const isSevere = Math.abs(delta) >= 1500 || oppBest < -1200;
-  const isModerate = Math.abs(delta) >= 350 || oppBest < -250;
-  if (isMate) bid = Math.max(bid, tierMate);
-  else if (isSevere) bid = Math.max(bid, tierSevere);
-  else if (isModerate) bid = Math.max(bid, tierModerate);
+
+  // Tiered defence — always overrides on critical positions.
+  const defenseBid = tieredDefenseBid(
+    state,
+    color,
+    delta,
+    oppBest,
+    chips,
+    oppChips,
+    'oni'
+  );
+  if (defenseBid > 0) bid = Math.max(bid, defenseBid);
+
+  const cap = Math.max(1, Math.floor(chips * 0.92));
   return clampBid(Math.min(bid, cap), state, color);
 }
 
@@ -277,12 +406,6 @@ export function decideMove(
   if (level === 'intermediate') return pickAlphaBetaMove(state, mover, 2);
   if (level === 'advanced') return pickAlphaBetaMove(state, mover, 4);
   return pickOniMove(state, mover);
-}
-
-function countEmpty(board: import('../types').Board): number {
-  let n = 0;
-  for (const row of board) for (const c of row) if (c === null) n++;
-  return n;
 }
 
 export { makeRng };

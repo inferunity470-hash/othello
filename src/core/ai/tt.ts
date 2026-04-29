@@ -15,7 +15,7 @@ export interface TTEntry {
   age: number;
 }
 
-const SIZE = 1 << 18; // 262,144 entries → ~6 MB rough memory
+const SIZE = 1 << 20; // 1,048,576 entries → ~24 MB rough memory
 const MASK = SIZE - 1;
 
 let TABLE: (TTEntry | null)[] = new Array(SIZE).fill(null);
