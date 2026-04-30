@@ -21,6 +21,9 @@ export interface AIBidContext {
  * Empirically tuned: 18 was too high — caused holders to bid 0 in nearly
  * symmetric positions, leading to mechanical alternation and short games.
  * 6 keeps the bias gentle without crippling competitive bidding.
+ * (Higher values up to 10 were tested but reduced oni's win rate at
+ * chips=100, suggesting the token's marginal value is small for typical
+ * game lengths.)
  */
 const TOKEN_COST = 6;
 
@@ -28,7 +31,8 @@ function deltaValueOfMoving(
   state: GameState,
   color: Color,
   depth: number,
-  useStrong = false
+  useStrong = false,
+  timeBudgetMs?: number
 ): { delta: number; myBest: number; oppBest: number } {
   const opp = opponentOf(color);
   let myScore: number;
@@ -37,10 +41,12 @@ function deltaValueOfMoving(
     const me = strongSearch(state.board, color, {
       maxDepth: depth,
       exactEndgameEmpties: 0,
+      timeBudgetMs,
     });
     const them = strongSearch(state.board, opp, {
       maxDepth: depth,
       exactEndgameEmpties: 0,
+      timeBudgetMs,
     });
     // strongSearch returns scores from the searcher's POV. Convert opp's
     // score to `color`'s POV by negation.
@@ -144,25 +150,37 @@ function pickAlphaBetaMove(
 
 function pickOniMove(state: GameState, mover: Color): { row: number; col: number } {
   const empties = countEmpty(state.board);
-  // Endgame: solve exactly when ≤ 16 empties.
-  // Midgame: deep PVS with TT, depth tuned to feasibility (search is ~30x
-  // faster after the eval/search rewrite).
+  // Endgame: solve exactly when ≤ 16 empties (TT-cached endgame solver
+  // makes 16-empty solves feasible; 2 plies more exact play than the
+  // previous ≤14 trigger).
+  // Midgame: deep PVS with TT + iterative deepening + aspiration
+  // windows. Time budgets bound each move for UI snappiness; iterative
+  // deepening returns the last completed iteration's move.
   let maxDepth: number;
   let exactEndgameEmpties: number;
-  if (empties <= 8) {
-    maxDepth = 20;
+  let timeBudgetMs: number | undefined;
+  if (empties <= 10) {
+    maxDepth = 22;
     exactEndgameEmpties = empties;
-  } else if (empties <= 14) {
+    timeBudgetMs = 3000;
+  } else if (empties <= 16) {
     maxDepth = 18;
     exactEndgameEmpties = empties;
+    timeBudgetMs = 2500;
   } else if (empties <= 22) {
-    maxDepth = 11;
+    maxDepth = 12;
     exactEndgameEmpties = 0;
+    timeBudgetMs = 1500;
   } else {
-    maxDepth = 9;
+    maxDepth = 10;
     exactEndgameEmpties = 0;
+    timeBudgetMs = 1000;
   }
-  const r = strongSearch(state.board, mover, { maxDepth, exactEndgameEmpties });
+  const r = strongSearch(state.board, mover, {
+    maxDepth,
+    exactEndgameEmpties,
+    timeBudgetMs,
+  });
   if (!r.move) return pickGreedyMove(state, mover);
   return r.move;
 }
@@ -346,8 +364,10 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
 
   // oni
   const empties = countEmpty(state.board);
-  const depth = empties <= 14 ? 9 : empties <= 22 ? 8 : 7;
-  const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true);
+  // Bid evaluation is a *forecast* of the upcoming move's value. Depth 8-10
+  // matches the depth pickOniMove will use; budget bounds it to ~600ms.
+  const depth = empties <= 14 ? 10 : empties <= 22 ? 9 : 8;
+  const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true, 700);
   const adjusted = isHolder ? delta - TOKEN_COST : delta;
 
   // Sparse-board (early opening) base: bid higher to avoid the

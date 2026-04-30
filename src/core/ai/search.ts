@@ -116,8 +116,10 @@ function orderMoves(
       const cc = m.col === 1 ? 0 : 7;
       if (board[cr][cc] === null) s -= 8000;
     } else if (isCSquare(m.row, m.col)) {
-      const cr = m.row === 0 || m.row === 7 ? m.row : (m.col === 0 || m.col === 7 ? m.row : 0);
-      const cc = m.col === 0 || m.col === 7 ? m.col : (m.row === 0 || m.row === 7 ? m.col : 0);
+      // C-square is one of (0,1) (0,6) (1,0) (1,7) (6,0) (6,7) (7,1) (7,6).
+      // Find the unique adjacent corner: snap each axis to 0 or 7.
+      const cr = m.row <= 3 ? 0 : 7;
+      const cc = m.col <= 3 ? 0 : 7;
       if (board[cr][cc] === null) s -= 4000;
     }
     if (
@@ -450,14 +452,22 @@ export function strongSearch(
       alpha = -INF;
       beta = INF;
     } else {
-      const window = 50;
+      // Aspiration window — tighter for stable mid/endgame positions
+      // (where PVS already amortises most of the cost) and wider in
+      // wild opening-to-midgame transitions.
+      const window = d <= 6 ? 60 : 35;
       alpha = prev - window;
       beta = prev + window;
     }
     let r = pvs(board, color, d, alpha, beta, false, 0);
-    // Aspiration miss: re-search with full window (and grow the window
-    // exponentially in case the eval is genuinely volatile at this depth).
-    let widen = 50;
+    // If the search was interrupted by the time budget, the returned
+    // score is contaminated by short-circuited evaluateBoard calls
+    // inside pvs — keep the previous (last-completed) iteration's
+    // result rather than accepting bogus values.
+    if (Date.now() > stopAt) break;
+    // Aspiration miss: re-search with a widened window (grown
+    // exponentially in case the eval is genuinely volatile).
+    let widen = 60;
     while (
       (r.score <= alpha || r.score >= beta) &&
       Date.now() < stopAt &&
@@ -472,6 +482,9 @@ export function strongSearch(
       r = pvs(board, color, d, alpha, beta, false, 0);
       if (alpha === -INF && beta === INF) break;
     }
+    // If we ran out of time during the (possibly-widened) re-search,
+    // discard this iteration's result and keep the previous one.
+    if (Date.now() > stopAt) break;
     result = r;
     depthReached = d;
     prev = r.score;
