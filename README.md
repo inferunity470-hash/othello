@@ -49,6 +49,30 @@ npm run preview   # http://localhost:4173 で確認
 `dist/` を Vercel / Cloudflare Pages 等にデプロイ可能。
 オンライン対戦を使う場合は `server/index.ts` を別途デプロイ ((tsx で起動 or `tsc --outDir dist-server` 後 node 実行)。
 
+**4. Vercel にデプロイ**
+
+このリポジトリは Vercel 用に `vercel.json` を同梱しているのでそのまま import して deploy できる:
+
+1. [vercel.com/new](https://vercel.com/new) で GitHub リポジトリを import
+2. Framework は自動検出 (Vite) — そのまま「Deploy」
+3. ビルドが終わると `https://<project>.vercel.app/` で公開
+
+ホットシート対戦 / NPC 対戦は静的ホストだけで動作する。
+**オンライン対戦のみ** WebSocket サーバ (`server/index.ts`) を別途
+立てる必要がある (Render / Fly.io / Railway 等):
+
+```bash
+# Render の場合: Web Service を作成、Build = npm install,
+# Start = npm run server, Port = 8787 を expose
+# 取得した wss URL を Vercel のプロジェクト環境変数に設定:
+VITE_WS_URL=wss://your-othello-server.onrender.com
+```
+
+`VITE_WS_URL` を設定後に Vercel 側で再デプロイすると、Online タブ
+の入力欄にデフォルトでその URL が入る。未設定でも Online タブは
+動作するが、別途自前のサーバ URL をフォームに入れる必要がある旨
+の注意書きが表示される。
+
 ### テスト・型チェック
 
 ```bash

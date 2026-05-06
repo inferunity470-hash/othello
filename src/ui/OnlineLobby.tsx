@@ -1,5 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PartyClient, ConnectionStatus, defaultServerUrl } from '../net/partyClient';
+import {
+  PartyClient,
+  ConnectionStatus,
+  defaultServerUrl,
+  isLikelyStaticHost,
+} from '../net/partyClient';
 import { ServerMsg, PublicGameState } from '../net/protocol';
 import {
   Color,
@@ -219,9 +224,37 @@ export function OnlineLobby({ onExit }: Props) {
   }, []);
 
   if (!session) {
+    const showStaticNotice = isLikelyStaticHost();
     return (
       <div className="lobby">
         <h2>🌐 オンライン対戦</h2>
+        {showStaticNotice && (
+          <div
+            className="muted"
+            style={{
+              background: 'var(--panel-2)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 8,
+              padding: '0.6rem 0.8rem',
+              fontSize: '0.88rem',
+            }}
+          >
+            ⚠️ このサイトは静的ホスト (Vercel など) で配信されており、
+            WebSocket サーバが同居していません。オンライン対戦には別途
+            自前の WebSocket サーバが必要です:
+            <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.2rem' }}>
+              <li>
+                ローカル: <code>npm run server</code> →{' '}
+                <code>ws://localhost:8787</code>
+              </li>
+              <li>
+                公開: Render / Fly / Railway 等で <code>server/index.ts</code>{' '}
+                を起動 → 環境変数 <code>VITE_WS_URL</code> にその URL を設定して
+                Vercel に再デプロイ
+              </li>
+            </ul>
+          </div>
+        )}
         <div className="row">
           <span className={`connection-status ${status}`}>
             <span className="dot" />

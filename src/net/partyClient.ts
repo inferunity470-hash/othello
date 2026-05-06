@@ -85,9 +85,40 @@ export class PartyClient {
   }
 }
 
+function envWsUrl(): string | undefined {
+  // Vite injects `import.meta.env.VITE_WS_URL` at build time. Falls back
+  // to undefined in non-Vite contexts (Node tests, server).
+  const env =
+    typeof import.meta !== 'undefined'
+      ? (import.meta as ImportMeta & { env?: Record<string, string | undefined> })
+          .env
+      : undefined;
+  const url = env?.VITE_WS_URL;
+  return url && url.trim() ? url.trim() : undefined;
+}
+
 export function defaultServerUrl(): string {
+  // Allow build-time override (e.g. on Vercel: VITE_WS_URL=wss://my-server)
+  // so static-hosted clients can find their dedicated WebSocket backend.
+  const envUrl = envWsUrl();
+  if (envUrl) return envUrl;
   if (typeof window === 'undefined') return 'ws://localhost:8787';
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const host = window.location.hostname || 'localhost';
   return `${proto}://${host}:8787`;
+}
+
+/**
+ * Returns true when the deployment is running on a static host (e.g.
+ * Vercel) without a co-located WebSocket server. Used to surface a
+ * helpful notice in the Online lobby instead of a silent connection
+ * failure. Heuristic: no VITE_WS_URL env var AND we're on a non-local
+ * https origin.
+ */
+export function isLikelyStaticHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (envWsUrl()) return false;
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return false;
+  return window.location.protocol === 'https:';
 }
