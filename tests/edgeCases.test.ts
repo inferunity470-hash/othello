@@ -28,10 +28,13 @@ describe('edge cases E1-E15', () => {
     expect(() => setPendingBid(s, 'BLACK', 0.5)).toThrow();
   });
 
-  it('E3: both chips 0 with both legal moves -> FINAL_MOVE at start of next loop', () => {
+  it('E3: both chips 0 with both legal moves -> ENDED (no free final move)', () => {
+    // New rule: when both reach 0 chips, end the game outright. Previously
+    // the holder got one free FINAL_MOVE, which felt unfair to the user.
     let s = initGame({ initialChips: 0 });
     s = computeAutoPhase(s);
-    expect(s.phase).toBe('FINAL_MOVE');
+    expect(s.phase).toBe('ENDED');
+    expect(s.endReason).toBe('CHIPS_EXHAUSTED');
   });
 
   it('E4: both chips 0 and holder no legal move -> ENDED', () => {
@@ -139,22 +142,21 @@ describe('edge cases E1-E15', () => {
     expect(detectCornerGain(before, after, 'BLACK')).toBe(2);
   });
 
-  it('FINAL_MOVE does NOT grant corner bonus', () => {
-    // Build: chips 0/0, BLACK is holder, position where BLACK can take a corner.
+  it('FINAL_MOVE phase does NOT grant corner bonus (when manually entered)', () => {
+    // FINAL_MOVE is no longer auto-entered when both chips reach 0 (the
+    // game now ends outright in that case). The phase still exists for
+    // legacy / manual routing, and its semantics — no corner bonus —
+    // are preserved.
     let s = initGame({ initialChips: 0, cornerBonus: 100 });
     const b: Board = emptyBoard();
-    // Set a position where BLACK can play (0,0) flipping (0,1) and where WHITE has some legal move
     b[0][1] = 'WHITE';
     b[0][2] = 'BLACK';
     b[3][3] = 'WHITE';
     b[3][4] = 'BLACK';
     b[4][3] = 'BLACK';
     b[4][4] = 'WHITE';
-    s = { ...s, board: b };
-    s = computeAutoPhase(s);
-    expect(s.phase).toBe('FINAL_MOVE');
-    expect(s.initiativeHolder).toBe('BLACK');
-    // Black places at (0,0)
+    s = { ...s, board: b, phase: 'FINAL_MOVE', initiativeHolder: 'BLACK' };
+    // Black places at (0,0) under FINAL_MOVE
     s = applyPlacement(s, 'BLACK', 0, 0);
     expect(s.phase).toBe('ENDED');
     expect(s.endReason).toBe('CHIPS_EXHAUSTED');

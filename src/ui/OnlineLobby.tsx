@@ -98,6 +98,15 @@ export function OnlineLobby({ onExit }: Props) {
       };
       sessionRef.current = newSession;
       setSession(newSession);
+      // Remember enough to auto-rejoin if the WS drops and reconnects.
+      // Without this, a transient disconnect leaves the server-side
+      // `joinedCode` null and subsequent BID / PLACE messages return
+      // ROOM_NOT_FOUND.
+      client.setRejoinInfo({
+        room: msg.room,
+        name,
+        asColor: msg.you,
+      });
       return;
     }
     if (msg.t === 'STATE') {

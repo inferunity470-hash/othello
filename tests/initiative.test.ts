@@ -82,16 +82,27 @@ describe('initiative invariant: FREE_MOVE phase', () => {
   });
 });
 
-describe('initiative invariant: FINAL_MOVE phase', () => {
-  it('holder plays final move, token transfers (game ends)', () => {
+describe('initiative invariant: chip-exhaustion phase', () => {
+  it('both 0 chips with both having moves -> ENDED (no free final move)', () => {
+    // Spec change: previously this routed to FINAL_MOVE so the holder
+    // got one free placement. Now both are out of chips so the game
+    // ends outright.
     let s = initGame({ initialChips: 0 });
     s = computeAutoPhase(s);
-    expect(s.phase).toBe('FINAL_MOVE');
+    expect(s.phase).toBe('ENDED');
+    expect(s.endReason).toBe('CHIPS_EXHAUSTED');
+  });
+
+  it('FINAL_MOVE phase still terminates correctly when set manually', () => {
+    // The phase enum still includes FINAL_MOVE for legacy reasons.
+    // Verify that applying a placement under it transitions to ENDED.
+    let s = initGame({ initialChips: 0 });
+    s = { ...s, phase: 'FINAL_MOVE' };
     expect(s.initiativeHolder).toBe('BLACK');
     const m = legalMoves(s.board, 'BLACK')[0];
     s = applyPlacement(s, 'BLACK', m.row, m.col);
     expect(s.phase).toBe('ENDED');
-    // Even though game ended, the token should have transferred per the rule.
+    // Token should have transferred per the placement-driven rule.
     expect(s.initiativeHolder).toBe('WHITE');
   });
 });
@@ -125,26 +136,20 @@ describe('replay correctness with new rule', () => {
     }
   });
 
-  it('replays a chip-exhaustion path that triggers FINAL_MOVE', () => {
-    // Setup: BLACK chips=0, WHITE chips=5 (asymmetric handicap).
-    // White will win the next bid and pay 5 -> both 0 -> FINAL_MOVE.
-    // Holder = BLACK plays the final move.
+  it('replays a chip-exhaustion path that ends the game', () => {
+    // BLACK chips=0, WHITE chips=5. WHITE wins the next bid, pays 5 →
+    // both at 0. New rule: game ends immediately (was FINAL_MOVE).
     let s = initGame({ initialChips: { BLACK: 0, WHITE: 5 } });
     expect(s.players.BLACK.chips).toBe(0);
     expect(s.players.WHITE.chips).toBe(5);
     s = setPendingBid(s, 'BLACK', 0);
     s = setPendingBid(s, 'WHITE', 5);
     s = resolvePendingBids(s).state;
-    expect(s.phase).toBe('FINAL_MOVE');
+    expect(s.phase).toBe('ENDED');
+    expect(s.endReason).toBe('CHIPS_EXHAUSTED');
     expect(s.players.BLACK.chips).toBe(0);
     expect(s.players.WHITE.chips).toBe(0);
     expect(s.initiativeHolder).toBe('BLACK');
-    expect(expectedMover(s)).toBe('BLACK');
-    // Black plays the final move
-    const m = legalMoves(s.board, 'BLACK')[0];
-    s = applyPlacement(s, 'BLACK', m.row, m.col);
-    expect(s.phase).toBe('ENDED');
-    expect(s.initiativeHolder).toBe('WHITE');
 
     // Replay should produce the same final state
     const re = replayEvents(s.options, s.history);
@@ -191,17 +196,18 @@ describe('BidReveal token messaging accuracy (jsdom-free contract)', () => {
     expect(placer).not.toBe(out.state.initiativeHolder);
   });
 
-  it('FINAL_MOVE entry: placer is holder regardless of bid winner', () => {
-    // Setup BLACK chips=0, WHITE=5, holder=BLACK. WHITE wins by bidding 5,
-    // both 0 → FINAL_MOVE. Placer is BLACK (holder), not WHITE (winner).
+  it('chip exhaustion entry: bid resolved but game ends immediately', () => {
+    // Setup BLACK chips=0, WHITE=5. WHITE wins by bidding 5, both reach 0.
+    // New rule: game ends — neither player gets a free placement.
     let s = initGame({ initialChips: { BLACK: 0, WHITE: 5 } });
     s = setPendingBid(s, 'BLACK', 0);
     s = setPendingBid(s, 'WHITE', 5);
     const out = resolvePendingBids(s);
-    expect(out.state.phase).toBe('FINAL_MOVE');
+    expect(out.state.phase).toBe('ENDED');
+    expect(out.state.endReason).toBe('CHIPS_EXHAUSTED');
     expect(out.resolution.winner).toBe('WHITE');
-    // The actual placer is the holder, not the bid winner
-    expect(expectedMover(out.state)).toBe('BLACK');
+    // Initiative holder unchanged at game end (placement-driven token rule
+    // only fires on actual placement, which doesn't happen here).
     expect(out.state.initiativeHolder).toBe('BLACK');
   });
 });

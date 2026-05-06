@@ -118,12 +118,11 @@ describe('chip exhaustion', () => {
     expect(s.phase).toBe('PLACING');
   });
 
-  it('FINAL_MOVE when both chips become 0 simultaneously', () => {
-    // Setup: chips=5 vs 5; black bids 5, white bids 5 (tie BLACK wins, pays 5).
-    // Black 0, white 5. Not 0-0 yet.
-    // Need a scenario where one side already has 0 going into bidding.
+  it('ENDED when both chips become 0 simultaneously', () => {
+    // New rule: when bid resolution leaves both at 0 chips, end the
+    // game outright (no FINAL_MOVE). Setup: chips=5 vs 0; BLACK bids 5,
+    // WHITE bids 0 -> BLACK wins, pays 5 -> both at 0 -> ENDED.
     let s = initGame({ initialChips: 5 });
-    // hack: set white chips to 0, black bids 5 -> black wins paying 5 -> 0-0
     s = { ...s, players: { ...s.players, WHITE: { ...s.players.WHITE, chips: 0 } } };
     s = setPendingBid(s, 'BLACK', 5);
     s = setPendingBid(s, 'WHITE', 0);
@@ -131,7 +130,7 @@ describe('chip exhaustion', () => {
     s = out.state;
     expect(s.players.BLACK.chips).toBe(0);
     expect(s.players.WHITE.chips).toBe(0);
-    expect(s.phase).toBe('FINAL_MOVE');
+    expect(s.phase).toBe('ENDED');
     expect(s.endReason).toBe('CHIPS_EXHAUSTED');
   });
 });
@@ -143,9 +142,12 @@ describe('computeAutoPhase', () => {
     expect(next.phase).toBe('BIDDING');
   });
 
-  it('returns FINAL_MOVE when both 0 chips and both have moves', () => {
+  it('returns ENDED when both 0 chips and both have moves (chip exhaustion rule)', () => {
+    // Spec change: previously this returned FINAL_MOVE so the holder
+    // got one free placement. The new rule is to end the game outright.
     let s = initGame({ initialChips: 0 });
     s = computeAutoPhase(s);
-    expect(s.phase).toBe('FINAL_MOVE');
+    expect(s.phase).toBe('ENDED');
+    expect(s.endReason).toBe('CHIPS_EXHAUSTED');
   });
 });

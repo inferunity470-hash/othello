@@ -40,8 +40,8 @@ export function initGame(options?: Partial<GameOptions>): GameState {
  * Decide the next phase from board + chips alone, ignoring any pending bids.
  * Used after a placement OR at game initialization.
  *
- * Spec §5 main loop: BOTH_NO_MOVES > FREE_MOVE (legalB xor legalW) > FINAL_MOVE
- * (0-0 with both having moves) > BIDDING.
+ * Spec: BOTH_NO_MOVES > FREE_MOVE (legalB xor legalW) > ENDED (both at
+ * 0 chips) > BIDDING.
  */
 export function computeAutoPhase(state: GameState): GameState {
   if (state.phase === 'ENDED') return state;
@@ -61,9 +61,17 @@ export function computeAutoPhase(state: GameState): GameState {
   if (legalB !== legalW) {
     return { ...state, phase: 'FREE_MOVE', pendingBids: {} };
   }
-  // both have legal moves
+  // Both have legal moves. If neither can afford to bid, end the game
+  // immediately — neither player should get a "free" final placement
+  // when both are out of chips.
   if (state.players.BLACK.chips === 0 && state.players.WHITE.chips === 0) {
-    return { ...state, phase: 'FINAL_MOVE', pendingBids: {} };
+    return {
+      ...state,
+      phase: 'ENDED',
+      endReason: 'CHIPS_EXHAUSTED',
+      endedAt: Date.now(),
+      pendingBids: {},
+    };
   }
   return { ...state, phase: 'BIDDING', pendingBids: state.pendingBids ?? {} };
 }
@@ -127,19 +135,15 @@ export function resolvePendingBids(state: GameState): ResolveOutcome {
   const bothZero = newPlayers.BLACK.chips === 0 && newPlayers.WHITE.chips === 0;
   // After bidding, board is unchanged, so both still have legal moves
   // (since BIDDING was entered only when both had moves).
-  const holderHasMove = hasLegalMove(state.board, res.newInitiativeHolder);
   const winnerHasMove = hasLegalMove(state.board, res.winner);
 
   let phase: GameState['phase'];
   let endReason: GameState['endReason'] | undefined;
   if (bothZero) {
-    if (holderHasMove) {
-      phase = 'FINAL_MOVE';
-      endReason = 'CHIPS_EXHAUSTED';
-    } else {
-      phase = 'ENDED';
-      endReason = 'CHIPS_EXHAUSTED';
-    }
+    // Both players are out of chips. End the game outright — neither
+    // side should get a "free" final placement after a tie at zero.
+    phase = 'ENDED';
+    endReason = 'CHIPS_EXHAUSTED';
   } else if (winnerHasMove) {
     phase = 'PLACING';
   } else {
