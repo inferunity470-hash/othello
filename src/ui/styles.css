@@ -324,6 +324,7 @@ label.stack {
   grid-row: 2 / 3;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
   gap: 2px;
   aspect-ratio: 1 / 1;
   width: 100%;
@@ -344,6 +345,11 @@ label.stack {
   cursor: default;
   font-size: 0.7rem;
   transition: background 0.15s;
+  /* Prevent intrinsic content (the disc holder, badges) from inflating
+     the cell beyond its 1fr share of the board. Without these, the grid
+     would honour intrinsic content sizes and distort cells unevenly. */
+  min-width: 0;
+  min-height: 0;
 }
 
 .cell.dark {
