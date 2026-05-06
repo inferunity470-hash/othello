@@ -17,10 +17,14 @@ export interface GameOptions {
   zeroBidStreakLimit: number | null;
   turnTimeoutSec: number | null;
   /**
-   * Auction format. Default 'first-price' (winner pays own bid).
-   * 'second-price' = Vickrey: winner pays loser's bid. Spec §17.6
+   * Auction format.
+   *  - 'first-price'  : winner pays own bid; loser pays 0 (default).
+   *  - 'second-price' : winner pays loser's bid; loser pays 0 (Vickrey).
+   *  - 'all-pay'      : BOTH players pay their own bid regardless of
+   *                     who wins. Loser's bid is sunk cost.
+   * Spec §17.6 + custom rule.
    */
-  auctionType: 'first-price' | 'second-price';
+  auctionType: 'first-price' | 'second-price' | 'all-pay';
 }
 
 export type GamePhase =

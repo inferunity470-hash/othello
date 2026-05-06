@@ -63,6 +63,16 @@ export const LOBBY_PRESETS: LobbyPreset[] = [
       auctionType: 'second-price',
     },
   },
+  {
+    key: 'allpay',
+    emoji: '💸',
+    label: 'オールペイ',
+    description: '両者が入札額を失う (敗者も支払う)',
+    options: {
+      ...DEFAULT_OPTIONS,
+      auctionType: 'all-pay',
+    },
+  },
 ];
 
 interface Props {

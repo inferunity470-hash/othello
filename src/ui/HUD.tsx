@@ -57,7 +57,14 @@ export function HUD({ state, myColor, rightAccessory, showElapsed = true }: Prop
           <span className="pill warn">最小入札 {minBid}</span>
         )}
         {state.options.auctionType === 'second-price' && (
-          <span className="pill">セカンドプライス</span>
+          <span className="pill" title="Vickrey: 落札者は相手の入札額を支払う">
+            🎲 セカンド
+          </span>
+        )}
+        {state.options.auctionType === 'all-pay' && (
+          <span className="pill warn" title="両者が入札額を失う (敗者も支払う)">
+            💸 オールペイ
+          </span>
         )}
         {rightAccessory}
       </div>

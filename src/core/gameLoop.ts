@@ -89,7 +89,10 @@ export interface ResolveOutcome {
   state: GameState;
   resolution: {
     winner: Color;
+    /** Winner's chip payment (back-compat alias for `payments[winner]`). */
     payment: number;
+    /** Per-player chip payment. Both non-zero only for `all-pay` auctions. */
+    payments: { BLACK: number; WHITE: number };
     tieBroken: boolean;
     bids: { BLACK: number; WHITE: number };
   };
@@ -116,7 +119,10 @@ export function resolvePendingBids(state: GameState): ResolveOutcome {
     BLACK: { ...state.players.BLACK },
     WHITE: { ...state.players.WHITE },
   };
-  newPlayers[res.winner].chips -= res.payment;
+  // Deduct payments per-player. For first-price / second-price, only the
+  // winner's payment is non-zero; for all-pay, both players pay their bid.
+  newPlayers.BLACK.chips -= res.payments.BLACK;
+  newPlayers.WHITE.chips -= res.payments.WHITE;
 
   const bothZero = newPlayers.BLACK.chips === 0 && newPlayers.WHITE.chips === 0;
   // After bidding, board is unchanged, so both still have legal moves
@@ -178,6 +184,7 @@ export function resolvePendingBids(state: GameState): ResolveOutcome {
     resolution: {
       winner: res.winner,
       payment: res.payment,
+      payments: res.payments,
       tieBroken: res.tieBroken,
       bids,
     },

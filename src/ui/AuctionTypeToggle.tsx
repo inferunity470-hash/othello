@@ -8,8 +8,8 @@ interface Props {
 }
 
 /**
- * Toggle between first-price (winner pays own bid) and second-price /
- * Vickrey (winner pays loser's bid). Includes an inline term tooltip.
+ * Toggle between first-price, second-price (Vickrey), and all-pay
+ * auctions. Includes an inline term tooltip.
  */
 export function AuctionTypeToggle({ value, onChange }: Props) {
   return (
@@ -18,11 +18,13 @@ export function AuctionTypeToggle({ value, onChange }: Props) {
         term={<span>競売方式</span>}
         description={
           <span>
-            <strong>ファースト</strong> = 落札者が自分の入札額を支払う。
+            <strong>ファースト</strong> = 落札者のみが自分の入札額を支払う。
             <br />
             <strong>セカンド</strong> = 落札者は相手の入札額を支払う (Vickrey)。
+            正直に評価額を入札するのが弱支配戦略。
             <br />
-            セカンドは「正直に評価額を入札する」のが弱支配戦略。
+            <strong>オールペイ</strong> = 落札の有無に関係なく両者が
+            自分の入札額を失う。手番が取れなくても入札分は消費される。
           </span>
         }
       />
@@ -44,6 +46,15 @@ export function AuctionTypeToggle({ value, onChange }: Props) {
           title="Vickrey: 落札者は相手の入札額を支払う"
         >
           🎲 セカンド
+        </button>
+        <button
+          role="radio"
+          aria-checked={value === 'all-pay'}
+          className={value === 'all-pay' ? 'active' : ''}
+          onClick={() => onChange('all-pay')}
+          title="両者が自分の入札額を失う"
+        >
+          💸 オールペイ
         </button>
       </div>
     </div>

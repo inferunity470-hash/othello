@@ -7,6 +7,12 @@ interface Props {
   bids: { BLACK: number; WHITE: number };
   winner: Color;
   payment: number;
+  /**
+   * Per-player chip payment. Both non-zero in `all-pay` auctions, where
+   * the loser also forfeits their bid. If omitted, falls back to "winner
+   * pays `payment`, loser pays 0".
+   */
+  payments?: { BLACK: number; WHITE: number };
   tieBroken: boolean;
   /**
    * Initiative holder *at the moment of bid resolution* (i.e. before any
@@ -46,12 +52,17 @@ export function BidReveal({
   bids,
   winner,
   payment,
+  payments,
   tieBroken,
   holderAtResolve = null,
   nextPhase = null,
   onClose,
   autoCloseMs = 2400,
 }: Props) {
+  // Resolve loser's payment for "all-pay" mode; defaults to 0 (winner-only).
+  const loserColor: Color = winner === 'BLACK' ? 'WHITE' : 'BLACK';
+  const loserPayment = payments ? payments[loserColor] : 0;
+  const isAllPay = loserPayment > 0;
   useEffect(() => {
     playSound('reveal');
     const t = setTimeout(onClose, autoCloseMs);
@@ -73,6 +84,7 @@ export function BidReveal({
     holderAtResolve != null && placer != null && placer !== holderAtResolve;
 
   const paymentVal = useCountUp(payment, 600);
+  const loserPaymentVal = useCountUp(loserPayment, 600);
   const blackVal = useCountUp(bids.BLACK, 700);
   const whiteVal = useCountUp(bids.WHITE, 700);
 
@@ -111,6 +123,16 @@ export function BidReveal({
               {winner === 'BLACK' ? '黒' : '白'}
             </strong>{' '}
             が <strong>{paymentVal}</strong> を支払って着手
+            {isAllPay && (
+              <div
+                className="muted"
+                style={{ marginTop: '0.3rem' }}
+                aria-label="敗者支払い (オールペイ)"
+              >
+                💸 {loserColor === 'BLACK' ? '黒' : '白'} も{' '}
+                <strong>{loserPaymentVal}</strong> を失います (オールペイ)
+              </div>
+            )}
             {tokenWillTransfer && (
               <div
                 className="muted"

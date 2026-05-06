@@ -228,6 +228,22 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
             }}
           />
         </label>
+        <label className="stack" title="入札方式">
+          <span>競売方式</span>
+          <select
+            value={options.auctionType}
+            onChange={e =>
+              setOptions({
+                ...options,
+                auctionType: e.target.value as GameOptions['auctionType'],
+              })
+            }
+          >
+            <option value="first-price">🪙 ファースト (落札者のみ支払い)</option>
+            <option value="second-price">🎲 セカンド (Vickrey)</option>
+            <option value="all-pay">💸 オールペイ (両者が入札額を失う)</option>
+          </select>
+        </label>
       </div>
 
       {tab === 'ai' && (
@@ -299,6 +315,8 @@ interface RevealData {
   bids: { BLACK: number; WHITE: number };
   winner: Color;
   payment: number;
+  /** Per-player chip payment. Both non-zero in `all-pay` auctions. */
+  payments: { BLACK: number; WHITE: number };
   tieBroken: boolean;
   /** Holder at resolve time — needed to message the placement-driven token transfer. */
   holderAtResolve: Color;
@@ -359,6 +377,7 @@ function LocalGame({ options, onExit }: LocalGameProps) {
         bids: out.resolution.bids,
         winner: out.resolution.winner,
         payment: out.resolution.payment,
+        payments: out.resolution.payments,
         tieBroken: out.resolution.tieBroken,
         holderAtResolve: out.state.initiativeHolder,
         nextPhase: out.state.phase,
@@ -497,6 +516,7 @@ function LocalGame({ options, onExit }: LocalGameProps) {
           bids={reveal.bids}
           winner={reveal.winner}
           payment={reveal.payment}
+          payments={reveal.payments}
           tieBroken={reveal.tieBroken}
           holderAtResolve={reveal.holderAtResolve}
           nextPhase={reveal.nextPhase}
@@ -579,6 +599,7 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
           bids: out.resolution.bids,
           winner: out.resolution.winner,
           payment: out.resolution.payment,
+          payments: out.resolution.payments,
           tieBroken: out.resolution.tieBroken,
           holderAtResolve: out.state.initiativeHolder,
           nextPhase: out.state.phase,
@@ -756,6 +777,7 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
           bids={reveal.bids}
           winner={reveal.winner}
           payment={reveal.payment}
+          payments={reveal.payments}
           tieBroken={reveal.tieBroken}
           holderAtResolve={reveal.holderAtResolve}
           nextPhase={reveal.nextPhase}

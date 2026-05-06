@@ -2,7 +2,18 @@ import { Color, GameState, opponentOf } from './types';
 
 export interface BidResolution {
   winner: Color;
+  /**
+   * The winner's payment (chips deducted from the winner). Kept for
+   * backward compatibility with first-price / second-price callers.
+   * For 'all-pay', equals `payments[winner]`.
+   */
   payment: number;
+  /**
+   * Per-player payment in chips. The winner always has `payments[winner] > 0`;
+   * the loser has `payments[loser] > 0` only for the `all-pay` auction,
+   * otherwise 0.
+   */
+  payments: { BLACK: number; WHITE: number };
   tieBroken: boolean;
   /**
    * Initiative holder *as of right after bid resolution*.
@@ -14,34 +25,51 @@ export interface BidResolution {
   newInitiativeHolder: Color;
 }
 
+function paymentsFor(
+  auctionType: GameState['options']['auctionType'],
+  bids: { BLACK: number; WHITE: number },
+  winner: Color
+): { BLACK: number; WHITE: number } {
+  const loser = opponentOf(winner);
+  if (auctionType === 'all-pay') {
+    // Both pay their own bid regardless of outcome.
+    return { BLACK: bids.BLACK, WHITE: bids.WHITE };
+  }
+  if (auctionType === 'second-price') {
+    // Winner pays loser's bid; loser pays nothing.
+    const out: { BLACK: number; WHITE: number } = { BLACK: 0, WHITE: 0 };
+    out[winner] = bids[loser];
+    return out;
+  }
+  // first-price: winner pays own bid; loser pays nothing.
+  const out: { BLACK: number; WHITE: number } = { BLACK: 0, WHITE: 0 };
+  out[winner] = bids[winner];
+  return out;
+}
+
 export function resolveBids(
   state: GameState,
   bids: { BLACK: number; WHITE: number }
 ): BidResolution {
-  const second = state.options.auctionType === 'second-price';
+  const auctionType = state.options.auctionType;
+  let winner: Color;
+  let tieBroken = false;
   if (bids.BLACK > bids.WHITE) {
-    return {
-      winner: 'BLACK',
-      payment: second ? bids.WHITE : bids.BLACK,
-      tieBroken: false,
-      newInitiativeHolder: state.initiativeHolder,
-    };
+    winner = 'BLACK';
+  } else if (bids.WHITE > bids.BLACK) {
+    winner = 'WHITE';
+  } else {
+    // Tied bids: the token holder wins the auction. The actual token move
+    // happens later (at placement) per the placement-driven rule.
+    winner = state.initiativeHolder;
+    tieBroken = true;
   }
-  if (bids.WHITE > bids.BLACK) {
-    return {
-      winner: 'WHITE',
-      payment: second ? bids.BLACK : bids.WHITE,
-      tieBroken: false,
-      newInitiativeHolder: state.initiativeHolder,
-    };
-  }
-  // Tied bids: the token holder wins the auction. The actual token move
-  // happens later (at placement) per the placement-driven rule.
-  const winner = state.initiativeHolder;
+  const payments = paymentsFor(auctionType, bids, winner);
   return {
     winner,
-    payment: bids[winner],
-    tieBroken: true,
+    payment: payments[winner],
+    payments,
+    tieBroken,
     newInitiativeHolder: state.initiativeHolder,
   };
 }
