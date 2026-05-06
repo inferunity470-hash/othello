@@ -40,6 +40,12 @@ export type ServerMsg =
       bids: { BLACK: number; WHITE: number };
       winner: Color;
       payment: number;
+      /**
+       * Per-player chip payment. Both non-zero in `all-pay` auctions.
+       * Optional for backward compatibility; clients should fall back to
+       * `{ [winner]: payment, [loser]: 0 }` when absent.
+       */
+      payments?: { BLACK: number; WHITE: number };
       tieBroken: boolean;
       /**
        * Initiative holder at resolution time. Useful for clients to message

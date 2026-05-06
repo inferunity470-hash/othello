@@ -71,6 +71,22 @@ export function BidPanel({ state, color, onSubmit, label }: Props) {
           残 <strong>{Math.max(0, chips - amount)}</strong>
         </span>
         {minBid > 0 && <span className="pill warn">最小 {minBid}</span>}
+        {state.options.auctionType === 'all-pay' && (
+          <span
+            className="pill warn"
+            title="オールペイ: 落札の有無に関わらずこの額を失います"
+          >
+            💸 オールペイ
+          </span>
+        )}
+        {state.options.auctionType === 'second-price' && (
+          <span
+            className="pill"
+            title="セカンド: 落札したら相手の入札額を支払います"
+          >
+            🎲 セカンド
+          </span>
+        )}
       </div>
 
       <div className="quick-bid-grid">

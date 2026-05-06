@@ -256,6 +256,7 @@ wss.on('connection', ws => {
           bids: out.resolution.bids,
           winner: out.resolution.winner,
           payment: out.resolution.payment,
+          payments: out.resolution.payments,
           tieBroken: out.resolution.tieBroken,
           holderAtResolve: out.state.initiativeHolder,
           nextPhase: out.state.phase as 'PLACING' | 'FREE_MOVE' | 'FINAL_MOVE' | 'ENDED',

@@ -31,6 +31,8 @@ interface RevealData {
   bids: { BLACK: number; WHITE: number };
   winner: Color;
   payment: number;
+  /** Per-player chip payment. Both non-zero in `all-pay`. */
+  payments?: { BLACK: number; WHITE: number };
   tieBroken: boolean;
   /** Holder *at the moment of resolution* (i.e. before placement). */
   holderAtResolve: Color | null;
@@ -93,6 +95,7 @@ export function OnlineLobby({ onExit }: Props) {
         bids: msg.bids,
         winner: msg.winner,
         payment: msg.payment,
+        payments: msg.payments,
         tieBroken: msg.tieBroken,
         holderAtResolve: msg.holderAtResolve,
         nextPhase: msg.nextPhase,
@@ -425,6 +428,7 @@ export function OnlineLobby({ onExit }: Props) {
           bids={reveal.bids}
           winner={reveal.winner}
           payment={reveal.payment}
+          payments={reveal.payments}
           tieBroken={reveal.tieBroken}
           holderAtResolve={reveal.holderAtResolve}
           nextPhase={reveal.nextPhase}
