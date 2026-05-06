@@ -199,8 +199,8 @@ describe('edge cases E1-E15', () => {
 });
 
 describe('chip flow correctness', () => {
-  it('bid winner pays exact bid; loser pays nothing', () => {
-    let s = initGame({ initialChips: 50 });
+  it('bid winner pays exact bid; loser pays nothing (first-price)', () => {
+    let s = initGame({ initialChips: 50, auctionType: 'first-price' });
     s = setPendingBid(s, 'BLACK', 30);
     s = setPendingBid(s, 'WHITE', 25);
     const out = resolvePendingBids(s);
@@ -209,7 +209,7 @@ describe('chip flow correctness', () => {
   });
 
   it('winner pays own bid, not opponent bid (first-price auction)', () => {
-    let s = initGame({ initialChips: 100 });
+    let s = initGame({ initialChips: 100, auctionType: 'first-price' });
     s = setPendingBid(s, 'BLACK', 90);
     s = setPendingBid(s, 'WHITE', 5);
     const out = resolvePendingBids(s);

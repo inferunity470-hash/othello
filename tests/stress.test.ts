@@ -17,13 +17,18 @@ function playGame(
   whiteLevel: AILevel,
   initialChips: number,
   seed: number,
-  options: Partial<{ cornerBonus: number; zeroBidStreakLimit: number | null }> = {}
+  options: Partial<{
+    cornerBonus: number;
+    zeroBidStreakLimit: number | null;
+    auctionType: 'first-price' | 'second-price' | 'all-pay';
+  }> = {}
 ): GameState {
   const rng = makeRng(seed);
   let s = initGame({
     initialChips,
     cornerBonus: options.cornerBonus ?? 10,
     zeroBidStreakLimit: options.zeroBidStreakLimit ?? null,
+    auctionType: options.auctionType ?? 'all-pay',
   });
   let safety = 1500;
   while (s.phase !== 'ENDED' && safety-- > 0) {
@@ -101,7 +106,10 @@ describe('stress: many random games', () => {
         intBlack ? 'intermediate' : 'beginner',
         intBlack ? 'beginner' : 'intermediate',
         100,
-        i + 500
+        i + 500,
+        // Use first-price for stable AI strength comparison; all-pay
+        // strategy is more stochastic and not what this test measures.
+        { auctionType: 'first-price' }
       );
       const intStones = intBlack
         ? countStones(s.board, 'BLACK')

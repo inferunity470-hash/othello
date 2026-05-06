@@ -223,6 +223,40 @@ function evalPointsToChips(value: number, chips: number): number {
 }
 
 /**
+ * Pick an all-pay bid that exploits both deep evaluation and opponent
+ * modelling. Strategy:
+ *
+ *  - adjusted ≤ 0       → bid 0 (skip, both pay 0 if opp also skips)
+ *  - clear advantage    → commit ~80% of valueChips (shade-based, like
+ *                         first-price but wider since opp also pays)
+ *  - marginal value     → bid only enough to beat opp's recent max bid,
+ *                         provided that's cheaper than the value
+ *
+ * The shade branch lets oni's deep search dominate via accurate
+ * `valueChips`; the min-to-win branch keeps us cheap against weak
+ * bidders. baseBid is the floor (T1 protection).
+ */
+function allPayBid(
+  state: GameState,
+  color: Color,
+  adjusted: number,
+  chips: number,
+  oppChips: number,
+  baseBid: number,
+  shade: number
+): number {
+  if (adjusted <= 0) return 0;
+  const valueChips = evalPointsToChips(adjusted, chips);
+  const target = Math.floor(valueChips * shade);
+  const oppMaxModel = estimateOppMaxBid(state, opponentOf(color), oppChips);
+  // Cheap-win path: if opp's modelled max is well below our shaded
+  // target, bid just above it instead of over-paying.
+  const minToWin = oppMaxModel + 3;
+  const cheap = minToWin < target ? minToWin : target;
+  return Math.max(baseBid, cheap);
+}
+
+/**
  * Estimate the opponent's plausible max bid this turn from recent
  * history. Used to bound the defense bid: bidding the full theoretical
  * `oppChips` is wasteful when history shows the opponent only spends
@@ -328,22 +362,20 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     const adjusted = isHolder ? delta - TOKEN_COST : delta;
     const base = Math.max(2, Math.floor(chips * 0.12));
     let bid = base;
-    if (adjusted > 0) {
+    if (isAllPay) {
+      // Lower shade (0.55) for intermediate — depth-2 search overestimates
+      // value; conservatively bid less.
+      bid = allPayBid(state, color, adjusted, chips, oppChips, base, 0.55);
+    } else if (adjusted > 0) {
       const valueChips = evalPointsToChips(adjusted, chips);
-      // Shading factor by auction type
-      const shade = isVickrey ? 0.85 : isAllPay ? 0.7 : 0.45;
+      const shade = isVickrey ? 0.85 : 0.45;
       bid = Math.max(bid, Math.floor(valueChips * shade));
     } else if (adjusted < -300) {
       bid = Math.max(0, Math.floor(chips * 0.02));
     }
-    // All-pay commit-or-skip: when our delta is small (or holder cost
-    // makes it negative), bidding low is a sunk cost — better to skip
-    // the auction entirely and preserve chips. Threshold is lower for
-    // intermediate (depth-2 search is noisy and underestimates value).
-    if (isAllPay && adjusted < 30) bid = 0;
     const cap = Math.max(
       1,
-      Math.floor(chips * (isVickrey ? 0.7 : isAllPay ? 0.55 : 0.4))
+      Math.floor(chips * (isVickrey ? 0.7 : isAllPay ? 0.6 : 0.4))
     );
     return clampBid(Math.min(bid, cap), state, color);
   }
@@ -353,15 +385,15 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     const adjusted = isHolder ? delta - TOKEN_COST : delta;
     const base = Math.max(2, Math.floor(chips * 0.08));
     let bid = base;
-    if (adjusted > 0) {
+    if (isAllPay) {
+      bid = allPayBid(state, color, adjusted, chips, oppChips, base, 0.7);
+    } else if (adjusted > 0) {
       const valueChips = evalPointsToChips(adjusted, chips);
-      const shade = isVickrey ? 0.9 : isAllPay ? 0.78 : 0.55;
+      const shade = isVickrey ? 0.9 : 0.55;
       bid = Math.max(bid, Math.floor(valueChips * shade));
     } else if (adjusted < -200) {
       bid = Math.max(0, Math.floor(-adjusted * 0.04));
     }
-    // All-pay: skip rather than waste chips on small-value auctions.
-    if (isAllPay && adjusted < 60) bid = 0;
     // Tiered defence: bid based on modelled opponent cap, never wasteful.
     const defenseBid = tieredDefenseBid(
       state,
@@ -401,25 +433,25 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   const conservation =
     estimatedRemainingBids >= 12 ? 0.85 : estimatedRemainingBids >= 6 ? 0.95 : 1.0;
 
-  if (adjusted > 0) {
+  if (isAllPay) {
+    // All-pay strategy for oni: shade 0.85 of value (high confidence
+    // from deep search) but cheap-win against weak bidders via the
+    // history model. Critical positions are bumped further by the
+    // tieredDefenseBid call below.
+    bid = allPayBid(state, color, adjusted, chips, oppChips, baseBid, 0.85);
+  } else if (adjusted > 0) {
     const valueChips = evalPointsToChips(adjusted, chips);
     // Shading factor by auction type:
     //  - first-price: ~60% (placement-driven token rule gives a small
     //    extra value to winning when we're not the holder)
     //  - Vickrey:     ~92% (close to truthful but reserve tiny margin)
-    //  - all-pay:     ~80% — losing the auction still costs, so we want
-    //    high probability of winning when we do compete
-    const shade = isVickrey ? 0.92 : isAllPay ? 0.8 : 0.6;
+    const shade = isVickrey ? 0.92 : 0.6;
     const target = Math.floor(valueChips * shade * conservation);
     bid = Math.max(bid, target + 2);
   } else if (adjusted < -150) {
     // We don't want to win — minimize bid (but still positive base).
     bid = Math.max(0, Math.floor(-adjusted * 0.04));
   }
-
-  // All-pay commit-or-skip: when our adjusted value is small, bidding
-  // anything is a sunk cost. Skip with bid=0 unless defense forces us up.
-  if (isAllPay && adjusted < 100) bid = 0;
 
   // Tiered defence — always overrides on critical positions.
   const defenseBid = tieredDefenseBid(

@@ -29,8 +29,11 @@ describe('handicap (asymmetric initial chips)', () => {
     ).toBe(300);
   });
 
-  it('handicap game proceeds normally', () => {
-    let s = initGame({ initialChips: { BLACK: 50, WHITE: 200 } });
+  it('handicap game proceeds normally (first-price)', () => {
+    let s = initGame({
+      initialChips: { BLACK: 50, WHITE: 200 },
+      auctionType: 'first-price',
+    });
     s = setPendingBid(s, 'BLACK', 5);
     s = setPendingBid(s, 'WHITE', 50);
     const out = resolvePendingBids(s);

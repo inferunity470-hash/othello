@@ -97,7 +97,7 @@ export const DEFAULT_OPTIONS: GameOptions = {
   cornerBonus: CONFIG.DEFAULT_CORNER_BONUS,
   zeroBidStreakLimit: null,
   turnTimeoutSec: null,
-  auctionType: 'first-price',
+  auctionType: 'all-pay',
 };
 
 export function initialChipsFor(opts: GameOptions, color: Color): number {

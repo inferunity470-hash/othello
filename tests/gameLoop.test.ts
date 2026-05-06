@@ -19,7 +19,7 @@ describe('game loop basics', () => {
   });
 
   it('higher bid wins; payment deducted from winner', () => {
-    let s = initGame();
+    let s = initGame({ auctionType: 'first-price' });
     s = setPendingBid(s, 'BLACK', 30);
     s = setPendingBid(s, 'WHITE', 20);
     const out = resolvePendingBids(s);
@@ -105,8 +105,8 @@ describe('game loop basics', () => {
 });
 
 describe('chip exhaustion', () => {
-  it('triggers FINAL_MOVE when bid resolution makes both 0', () => {
-    let s = initGame({ initialChips: 5 });
+  it('triggers FINAL_MOVE when bid resolution makes both 0 (first-price)', () => {
+    let s = initGame({ initialChips: 5, auctionType: 'first-price' });
     // black has 5, white has 5, black bids 5, white bids 5 (tie -> black wins, pays 5)
     s = setPendingBid(s, 'BLACK', 5);
     s = setPendingBid(s, 'WHITE', 5);
