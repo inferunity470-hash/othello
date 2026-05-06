@@ -1,4 +1,5 @@
 import { WebSocket, WebSocketServer } from 'ws';
+import { createServer } from 'node:http';
 import {
   applyPlacement,
   expectedMover,
@@ -81,8 +82,22 @@ function generateRoomCode(): string {
   throw new Error('cannot generate room code');
 }
 
-const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
-console.log(`[othello-bidding] WebSocket server listening on :${PORT}`);
+// Wrap the WS server in an HTTP server so platforms that health-check
+// via plain HTTP (Render, Fly.io, Railway) can accept the deployment.
+// `/healthz` always returns 200; everything else describes the service.
+const httpServer = createServer((req, res) => {
+  if (req.url === '/healthz' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ok');
+    return;
+  }
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('not found');
+});
+const wss = new WebSocketServer({ server: httpServer });
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`[othello-bidding] WebSocket server listening on :${PORT}`);
+});
 
 wss.on('connection', ws => {
   let joinedCode: string | null = null;
