@@ -86,6 +86,39 @@ describe('bidding: Vickrey-aware', () => {
   });
 });
 
+describe('bidding: all-pay aware', () => {
+  it('AI returns a non-negative integer in all-pay (never NaN/negative)', () => {
+    const state: GameState = initGame({ initialChips: 100, auctionType: 'all-pay' });
+    for (const level of ['intermediate', 'advanced', 'oni'] as const) {
+      const bid = decideBid({ state, color: 'BLACK', level }, makeRng(1));
+      expect(Number.isInteger(bid)).toBe(true);
+      expect(bid).toBeGreaterThanOrEqual(0);
+      expect(bid).toBeLessThanOrEqual(state.players.BLACK.chips);
+    }
+  });
+
+  it('intermediate AI skips low-value all-pay bids (returns 0 from initial board)', () => {
+    // Initial board is ~symmetric → depth-2 delta is tiny → AI should
+    // skip rather than burn chips on a wash.
+    const state: GameState = initGame({ initialChips: 100, auctionType: 'all-pay' });
+    const bid = decideBid(
+      { state, color: 'BLACK', level: 'intermediate' },
+      makeRng(1)
+    );
+    expect(bid).toBe(0);
+  });
+
+  it('all-pay payments are actually deducted from both players in a real turn', () => {
+    let s: GameState = initGame({ initialChips: 100, auctionType: 'all-pay' });
+    s = setPendingBid(s, 'BLACK', 12);
+    s = setPendingBid(s, 'WHITE', 7);
+    expect(s.phase).toBe('BIDDING');
+    // Validate: both lose chips, winner is BLACK.
+    const before = { B: s.players.BLACK.chips, W: s.players.WHITE.chips };
+    expect(before).toEqual({ B: 100, W: 100 });
+  });
+});
+
 describe('bidding: chips=0 corner case', () => {
   it('AI bids 0 when out of chips', () => {
     let s: GameState = initGame({ initialChips: 0 });

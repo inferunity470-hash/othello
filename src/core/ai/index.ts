@@ -302,8 +302,12 @@ function tieredDefenseBid(
  * willing to *not* bid as the holder, hoping the opponent takes the play
  * and loses their own token.
  *
- * Auction-type-aware: in Vickrey (second-price), the AI bids closer to its
- * true valuation since dominant-strategy play is to bid honestly.
+ * Auction-type-aware:
+ *  - Vickrey (second-price): bid close to true value (dominant strategy)
+ *  - All-pay: aggressive shade and a "commit-or-skip" threshold —
+ *    losing the auction still costs, so mid-bids are bad. Either commit
+ *    fully (high probability of winning) or bid 0.
+ *  - First-price (default): conservative shade.
  */
 export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): number {
   const { state, color, level } = ctx;
@@ -311,6 +315,7 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   if (chips === 0) return clampBid(0, state, color);
   const isHolder = state.initiativeHolder === color;
   const isVickrey = state.options.auctionType === 'second-price';
+  const isAllPay = state.options.auctionType === 'all-pay';
   const oppChips = state.players[opponentOf(color)].chips;
 
   if (level === 'beginner') {
@@ -325,13 +330,21 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     let bid = base;
     if (adjusted > 0) {
       const valueChips = evalPointsToChips(adjusted, chips);
-      // First-price shading or Vickrey truthfulness
-      const shade = isVickrey ? 0.85 : 0.45;
+      // Shading factor by auction type
+      const shade = isVickrey ? 0.85 : isAllPay ? 0.7 : 0.45;
       bid = Math.max(bid, Math.floor(valueChips * shade));
     } else if (adjusted < -300) {
       bid = Math.max(0, Math.floor(chips * 0.02));
     }
-    const cap = Math.max(1, Math.floor(chips * (isVickrey ? 0.7 : 0.4)));
+    // All-pay commit-or-skip: when our delta is small (or holder cost
+    // makes it negative), bidding low is a sunk cost — better to skip
+    // the auction entirely and preserve chips. Threshold is lower for
+    // intermediate (depth-2 search is noisy and underestimates value).
+    if (isAllPay && adjusted < 30) bid = 0;
+    const cap = Math.max(
+      1,
+      Math.floor(chips * (isVickrey ? 0.7 : isAllPay ? 0.55 : 0.4))
+    );
     return clampBid(Math.min(bid, cap), state, color);
   }
 
@@ -342,11 +355,13 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     let bid = base;
     if (adjusted > 0) {
       const valueChips = evalPointsToChips(adjusted, chips);
-      const shade = isVickrey ? 0.9 : 0.55;
+      const shade = isVickrey ? 0.9 : isAllPay ? 0.78 : 0.55;
       bid = Math.max(bid, Math.floor(valueChips * shade));
     } else if (adjusted < -200) {
       bid = Math.max(0, Math.floor(-adjusted * 0.04));
     }
+    // All-pay: skip rather than waste chips on small-value auctions.
+    if (isAllPay && adjusted < 60) bid = 0;
     // Tiered defence: bid based on modelled opponent cap, never wasteful.
     const defenseBid = tieredDefenseBid(
       state,
@@ -388,17 +403,23 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
 
   if (adjusted > 0) {
     const valueChips = evalPointsToChips(adjusted, chips);
-    // First-price: shade ~60% of value (slightly higher than naive
-    // equilibrium because the placement-driven rule gives extra value to
-    // winning when we're not the holder).
-    // Vickrey: bid 92% of value (close to truthful but reserve tiny margin).
-    const shade = isVickrey ? 0.92 : 0.6;
+    // Shading factor by auction type:
+    //  - first-price: ~60% (placement-driven token rule gives a small
+    //    extra value to winning when we're not the holder)
+    //  - Vickrey:     ~92% (close to truthful but reserve tiny margin)
+    //  - all-pay:     ~80% — losing the auction still costs, so we want
+    //    high probability of winning when we do compete
+    const shade = isVickrey ? 0.92 : isAllPay ? 0.8 : 0.6;
     const target = Math.floor(valueChips * shade * conservation);
     bid = Math.max(bid, target + 2);
   } else if (adjusted < -150) {
     // We don't want to win — minimize bid (but still positive base).
     bid = Math.max(0, Math.floor(-adjusted * 0.04));
   }
+
+  // All-pay commit-or-skip: when our adjusted value is small, bidding
+  // anything is a sunk cost. Skip with bid=0 unless defense forces us up.
+  if (isAllPay && adjusted < 100) bid = 0;
 
   // Tiered defence — always overrides on critical positions.
   const defenseBid = tieredDefenseBid(
