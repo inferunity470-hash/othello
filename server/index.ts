@@ -30,6 +30,12 @@ interface Room {
     WHITE: PeerSlot;
     SPECTATORS: PeerSlot[];
   };
+  /**
+   * Color of the player who has currently requested a rematch (waiting
+   * for the other to confirm). Cleared on game start. When the second
+   * player also requests, the room is reset and this returns to null.
+   */
+  rematchRequestedBy: Color | null;
 }
 
 const rooms = new Map<string, Room>();
@@ -157,6 +163,7 @@ wss.on('connection', ws => {
           WHITE: emptySlot(),
           SPECTATORS: [],
         },
+        rematchRequestedBy: null,
       };
       rooms.set(code, room);
       joinedCode = code;
@@ -227,6 +234,13 @@ wss.on('connection', ws => {
         message: 'No room joined',
       });
     }
+
+    // Re-derive myColor from the room's current player slots. This is
+    // necessary because rematch swaps BLACK/WHITE so the color cached in
+    // this connection's closure can become stale after a NEW_GAME.
+    if (room.players.BLACK.ws === ws) myColor = 'BLACK';
+    else if (room.players.WHITE.ws === ws) myColor = 'WHITE';
+    else if (room.players.SPECTATORS.some(s => s.ws === ws)) myColor = 'SPECTATE';
 
     if (msg.t === 'BID') {
       if (myColor !== 'BLACK' && myColor !== 'WHITE') {
@@ -369,6 +383,54 @@ wss.on('connection', ws => {
           tieBreaker: 'NONE',
         },
       });
+      broadcastState(room);
+      return;
+    }
+
+    if (msg.t === 'REMATCH') {
+      // Only meaningful after the game has ended; spectators can't request.
+      if (room.state.phase !== 'ENDED') return;
+      if (myColor !== 'BLACK' && myColor !== 'WHITE') return;
+
+      // First request — record and notify the opponent.
+      if (
+        room.rematchRequestedBy === null ||
+        room.rematchRequestedBy === myColor
+      ) {
+        room.rematchRequestedBy = myColor;
+        broadcast(room, { t: 'REMATCH_REQUESTED', from: myColor });
+        return;
+      }
+
+      // Second request from the OTHER player — reset the room and swap
+      // colours so neither side keeps the first-mover advantage across
+      // back-to-back games.
+      const oldBlack = room.players.BLACK;
+      const oldWhite = room.players.WHITE;
+      room.players.BLACK = oldWhite;
+      room.players.WHITE = oldBlack;
+      room.state = initGame(room.options);
+      room.rematchRequestedBy = null;
+
+      // Each connected peer needs to know their NEW color before state
+      // arrives. Send NEW_GAME individually with the recipient's color.
+      const sendIndividualNewGame = (slot: PeerSlot, color: Color | 'SPECTATE') => {
+        if (!slot.ws || !slot.connected) return;
+        const oppName =
+          color === 'BLACK'
+            ? room.players.WHITE.name ?? undefined
+            : color === 'WHITE'
+              ? room.players.BLACK.name ?? undefined
+              : undefined;
+        send(slot.ws, { t: 'NEW_GAME', you: color, opponentName: oppName });
+      };
+      sendIndividualNewGame(room.players.BLACK, 'BLACK');
+      sendIndividualNewGame(room.players.WHITE, 'WHITE');
+      for (const s of room.players.SPECTATORS) {
+        sendIndividualNewGame(s, 'SPECTATE');
+      }
+      // myColor will be re-derived from room.players on the next inbound
+      // message in this connection (see the recompute block above).
       broadcastState(room);
       return;
     }

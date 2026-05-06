@@ -15,6 +15,15 @@ export type ClientMsg =
   | { t: 'BID'; amount: number }
   | { t: 'PLACE'; row: number; col: number }
   | { t: 'RESIGN' }
+  | {
+      /**
+       * Request a rematch in the same room (only meaningful when the game
+       * has ENDED). The first request just announces intent; once BOTH
+       * players have requested, the server resets the room with the same
+       * options (with colours swapped) and broadcasts the new state.
+       */
+      t: 'REMATCH';
+    }
   | { t: 'CHAT'; text: string }
   | { t: 'PING' };
 
@@ -69,6 +78,26 @@ export type ServerMsg =
     }
   | { t: 'TURN_RECORDED'; record: TurnRecord }
   | { t: 'END'; result: GameResult }
+  | {
+      /**
+       * Acknowledged when one player presses "rematch" while waiting on
+       * the other. UI can show "Opponent wants a rematch" and prompt the
+       * recipient to accept. When the second player also sends REMATCH,
+       * the server starts a new game and broadcasts NEW_GAME instead.
+       */
+      t: 'REMATCH_REQUESTED';
+      from: Color;
+    }
+  | {
+      /**
+       * Sent when both players agreed to rematch. Recipients should reset
+       * their UI state and treat `you` as the new color (colours swap on
+       * each rematch so neither side keeps the first-mover advantage).
+       */
+      t: 'NEW_GAME';
+      you: Color | 'SPECTATE';
+      opponentName?: string;
+    }
   | { t: 'OPPONENT_DISCONNECTED'; graceSec: number }
   | { t: 'OPPONENT_RECONNECTED' }
   | { t: 'CHAT'; from: Color | 'SPECTATE'; text: string }

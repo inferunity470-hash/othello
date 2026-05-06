@@ -63,6 +63,19 @@ export function OnlineLobby({ onExit }: Props) {
   const [chatInput, setChatInput] = useState('');
   const [opponentDown, setOpponentDown] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  /**
+   * Whether *this* client has clicked 再戦 and is waiting on the opponent.
+   * Cleared on NEW_GAME or whenever a fresh game state is received.
+   */
+  const [rematchPendingFromMe, setRematchPendingFromMe] = useState(false);
+  /**
+   * Color of the opponent who has requested a rematch (waiting on us).
+   * null when no incoming request is pending. UI prompts the user to
+   * accept or decline.
+   */
+  const [rematchPendingFromOpp, setRematchPendingFromOpp] = useState<Color | null>(
+    null
+  );
 
   const sessionRef = useRef<Session | null>(null);
 
@@ -112,6 +125,32 @@ export function OnlineLobby({ onExit }: Props) {
     if (msg.t === 'TURN_RECORDED') return;
     if (msg.t === 'END') {
       setResult(msg.result);
+      // A fresh game ended → rematch slate is clean.
+      setRematchPendingFromMe(false);
+      setRematchPendingFromOpp(null);
+      return;
+    }
+    if (msg.t === 'REMATCH_REQUESTED') {
+      // Server only forwards the OTHER player's request to us. (The
+      // server doesn't echo our own request back.) Show the prompt.
+      setRematchPendingFromOpp(msg.from);
+      showToast(`${msg.from === 'BLACK' ? '黒' : '白'} が再戦を希望しています`);
+      return;
+    }
+    if (msg.t === 'NEW_GAME') {
+      // Both players agreed → server reset state and swapped colors.
+      // Update session.you so HUD / BidPanel target the right side.
+      const next: Session | null = sessionRef.current
+        ? { ...sessionRef.current, you: msg.you, opponentName: msg.opponentName }
+        : null;
+      sessionRef.current = next;
+      setSession(next);
+      setResult(null);
+      setReveal(null);
+      setOpponentBidIn(false);
+      setRematchPendingFromMe(false);
+      setRematchPendingFromOpp(null);
+      showToast('再戦を開始しました');
       return;
     }
     if (msg.t === 'OPPONENT_DISCONNECTED') {
@@ -448,6 +487,48 @@ export function OnlineLobby({ onExit }: Props) {
         {state && <GameLog state={state} />}
         {state?.phase === 'ENDED' && result && (
           <ResultCard state={state} result={result} myColor={session.you} />
+        )}
+        {state?.phase === 'ENDED' && !youAreSpec && (
+          <div className="bid-panel" style={{ display: 'grid', gap: '0.6rem' }}>
+            <div style={{ fontSize: '0.95rem' }}>
+              {rematchPendingFromOpp && rematchPendingFromOpp !== session.you ? (
+                <>
+                  🔁{' '}
+                  <strong>
+                    {rematchPendingFromOpp === 'BLACK' ? '黒' : '白'}
+                  </strong>{' '}
+                  が再戦を希望しています — 受ければ即座に新しい対局が始まります
+                  (色は入れ替わります)。
+                </>
+              ) : rematchPendingFromMe ? (
+                <>⏳ 相手の再戦応答を待っています...</>
+              ) : (
+                <>同じ部屋で再戦できます (色は入れ替わります)。</>
+              )}
+            </div>
+            <div className="row">
+              <button
+                className="primary"
+                disabled={rematchPendingFromMe}
+                onClick={() => {
+                  sessionRef.current?.client.send({ t: 'REMATCH' });
+                  setRematchPendingFromMe(true);
+                  if (
+                    rematchPendingFromOpp &&
+                    rematchPendingFromOpp !== session.you
+                  ) {
+                    showToast('再戦を承諾しました');
+                  } else {
+                    showToast('相手に再戦を申請しました');
+                  }
+                }}
+              >
+                {rematchPendingFromOpp && rematchPendingFromOpp !== session.you
+                  ? '✓ 再戦に同意'
+                  : '🔁 再戦をリクエスト'}
+              </button>
+            </div>
+          </div>
         )}
         <ChatPanel
           chatLog={chatLog}
