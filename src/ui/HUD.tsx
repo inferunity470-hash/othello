@@ -38,6 +38,16 @@ export function HUD({ state, myColor, rightAccessory, showElapsed = true }: Prop
         isMe={myColor === 'WHITE'}
       />
       <div className="meta-row">
+        <span
+          className={`pill holder-pill ${state.initiativeHolder === 'BLACK' ? 'holder-black' : 'holder-white'}`}
+          title="先手権トークン保持者: 同額入札時に勝ち、他方の合法手なし時に着手する"
+        >
+          ★ 先手権{' '}
+          <strong>{state.initiativeHolder === 'BLACK' ? '⚫ 黒' : '⚪ 白'}</strong>
+          {myColor && myColor !== 'SPECTATE' && state.initiativeHolder === myColor && (
+            <span style={{ marginLeft: '0.25rem' }}>(あなた)</span>
+          )}
+        </span>
         <span className="pill">手番 {state.history.length + 1}</span>
         {showElapsed && (
           <span className="pill" title="対局経過時間">
@@ -124,11 +134,20 @@ function PlayerCard({
 
   return (
     <div
-      className={`player-card ${active ? 'active' : ''}`}
-      aria-label={`${color === 'BLACK' ? '黒' : '白'} 情報`}
+      className={`player-card ${active ? 'active' : ''} ${hasToken ? 'holder' : ''}`}
+      aria-label={`${color === 'BLACK' ? '黒' : '白'} 情報${hasToken ? ' (先手権あり)' : ''}`}
     >
       <div className={`swatch ${color === 'BLACK' ? 'black' : 'white'}`}>
         {color === 'BLACK' ? '●' : '○'}
+        {hasToken && (
+          <span
+            className="swatch-token"
+            aria-hidden="true"
+            title="先手権トークン保持中"
+          >
+            ★
+          </span>
+        )}
       </div>
       <div className="player-info">
         <div className="player-name">
@@ -137,8 +156,8 @@ function PlayerCard({
             {isMe ? ' (あなた)' : ''}
           </span>
           {hasToken && (
-            <span className="token" title="先手権トークン">
-              ★トークン
+            <span className="token" title="先手権トークン保持中 (同額入札に勝ち、相手に手なし時に着手)">
+              ★ 先手権
             </span>
           )}
           <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{stones} 石</span>
