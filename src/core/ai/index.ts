@@ -441,22 +441,30 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   const adjusted = useV2 ? delta - TOKEN_COST : isHolder ? delta - TOKEN_COST : delta;
 
   // Asymmetric base bid (v2): holder bids low (ties favour them, conserves
-  // chips), non-holder bids slightly higher to break ties. Previously both
-  // sides bid the high `chips * 0.16 + 1` base in sparse openings, which
-  // under all-pay caused both to burn ~17 chips/round in symmetric positions
-  // (loser pays 17 for nothing). The new asymmetry makes the holder save
-  // chips by accepting placement losses (token retained) and the non-holder
-  // pay a small premium to take placements (token transfers via opp's move).
+  // chips), non-holder bids slightly higher to break ties.
+  // EXCEPTION (sparse opening): both sides use the SAME low base, and
+  // non-holder tieBump is suppressed. Rationale: 1000-game self-play
+  // showed BLACK (initial holder) lost 48-51 vs WHITE because the v2
+  // non-holder bumping forced WHITE to place first repeatedly in the
+  // opening, giving WHITE a positional foothold that exceeded BLACK's
+  // token value. In sparse phase, ties favour holder (BLACK) → BLACK
+  // gets early placements in symmetric positions, restoring fair play.
   const sparse = empties >= 50;
+  const suppressTieBump = useV2 && sparse;
   let baseBid: number;
   if (useV2) {
-    const baseHolderRatio = sparse ? 0.04 : 0.06;
-    const baseNonHolderRatio = sparse ? 0.10 : 0.10;
-    const baseRatio = isHolder ? baseHolderRatio : baseNonHolderRatio;
-    baseBid = Math.max(
-      isHolder ? 1 : 3,
-      Math.floor(chips * baseRatio) + (isHolder ? 0 : 1)
-    );
+    if (sparse) {
+      // Symmetric base in opening — ties favour holder (initial=BLACK).
+      baseBid = Math.max(2, Math.floor(chips * 0.05));
+    } else {
+      const baseHolderRatio = 0.06;
+      const baseNonHolderRatio = 0.10;
+      const baseRatio = isHolder ? baseHolderRatio : baseNonHolderRatio;
+      baseBid = Math.max(
+        isHolder ? 1 : 3,
+        Math.floor(chips * baseRatio) + (isHolder ? 0 : 1)
+      );
+    }
   } else {
     baseBid = sparse
       ? Math.max(3, Math.floor(chips * 0.16) + 1)
@@ -472,12 +480,16 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   const conservation =
     estimatedRemainingBids >= 12 ? 0.85 : estimatedRemainingBids >= 6 ? 0.95 : 1.0;
 
+  // Effective tiebreak status: in sparse opening, suppress non-holder bump
+  // by treating both sides as "holder" for tieBump purposes.
+  const isHolderForTiebreak = isHolder || suppressTieBump;
+
   if (isAllPay) {
     // All-pay strategy for oni: shade 0.85 of value (high confidence
     // from deep search) but cheap-win against weak bidders via the
     // history model. Critical positions are bumped further by the
     // tieredDefenseBid call below. Holder-aware tieBump (v2 only):
-    // +0 for holder, +2 for non-holder.
+    // +0 for holder (or sparse-opening), +2 for non-holder (mid/end).
     bid = allPayBid(
       state,
       color,
@@ -486,7 +498,7 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
       oppChips,
       baseBid,
       0.85,
-      useV2 ? isHolder : false
+      useV2 ? isHolderForTiebreak : false
     );
   } else if (adjusted > 0) {
     const valueChips = evalPointsToChips(adjusted, chips);
@@ -497,7 +509,8 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     const shade = isVickrey ? 0.92 : 0.6;
     const target = Math.floor(valueChips * shade * conservation);
     // Holder doesn't need a tie-break bump under v2 (ties favour holder).
-    const tieBump = useV2 ? (isHolder ? 0 : 2) : 2;
+    // Sparse-opening also suppresses the bump (preserve initial holder edge).
+    const tieBump = useV2 ? (isHolderForTiebreak ? 0 : 2) : 2;
     bid = Math.max(bid, target + tieBump);
   } else if (adjusted < -150) {
     // We don't want to win — minimize bid (but still positive base).
