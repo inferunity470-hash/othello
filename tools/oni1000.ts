@@ -149,17 +149,24 @@ function playOne(seed: number, initialChips: number, gameIdx: number): GameRecor
 
 const N = parseInt(process.argv[2] ?? '1000', 10);
 const CHIPS = parseInt(process.argv[3] ?? '100', 10);
+// Start index — when resuming after a crash, pass the next game number
+// (e.g., if 283 games were saved, pass 284). Defaults to 1.
+const START = parseInt(process.argv[4] ?? '1', 10);
+// Output file path. If provided, append to it (resume mode); otherwise
+// create a new timestamped file.
 const OUT_DIR = path.join(process.cwd(), 'data');
-const OUT_FILE = path.join(OUT_DIR, `oni-runs-${Date.now()}.jsonl`);
+const OUT_FILE = process.argv[5]
+  ? path.resolve(process.argv[5])
+  : path.join(OUT_DIR, `oni-runs-${Date.now()}.jsonl`);
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const stream = fs.openSync(OUT_FILE, 'a');
-console.log(`Oni-vs-oni mass self-play: ${N} games at chips=${CHIPS}`);
+console.log(`Oni-vs-oni mass self-play: ${N} games at chips=${CHIPS}, starting from game ${START}`);
 console.log(`Logging to: ${OUT_FILE}`);
 const t0 = Date.now();
 let blackWins = 0;
 let whiteWins = 0;
 let draws = 0;
-for (let i = 0; i < N; i++) {
+for (let i = START - 1; i < N; i++) {
   const r = playOne(i + 1, CHIPS, i + 1);
   fs.writeSync(stream, JSON.stringify(r) + '\n');
   fs.fsyncSync(stream);
@@ -167,8 +174,9 @@ for (let i = 0; i < N; i++) {
   else if (r.whiteStones > r.blackStones) whiteWins++;
   else draws++;
   const elapsed = (Date.now() - t0) / 1000;
-  const rate = (i + 1) / elapsed;
-  const remaining = (N - i - 1) / rate;
+  const done = i + 2 - START;
+  const rate = done / Math.max(0.001, elapsed);
+  const remaining = (N - i - 1) / Math.max(0.001, rate);
   console.log(
     `game ${i + 1}/${N}: B=${r.blackStones} W=${r.whiteStones} ` +
       `turns=${r.turns} dur=${(r.durationMs / 1000).toFixed(1)}s ` +
