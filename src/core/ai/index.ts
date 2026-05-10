@@ -14,9 +14,13 @@ export interface AIBidContext {
 
 /**
  * "Token cost" — how many board-eval points the AI implicitly pays for
- * losing the initiative token. Under the placement-driven rule, the holder
- * loses the token whenever they place a stone, so the AI should be slightly
- * less eager to win bids when it currently holds the token.
+ * losing the initiative token. Game-theoretically, BOTH sides should
+ * adjust their bid by `delta - TOKEN_COST` because:
+ *   - Holder winning bid → places, loses token (cost = TOKEN_COST)
+ *   - Holder losing bid → opp places (non-holder), holder keeps token (cost = 0)
+ *   - Non-holder winning bid → places, status unchanged (cost = 0)
+ *   - Non-holder losing bid → holder places, holder loses token to me (gain = TOKEN_COST)
+ * In both cases, the win-vs-lose differential is `placement - TOKEN_COST`.
  *
  * Empirically tuned: 18 was too high — caused holders to bid 0 in nearly
  * symmetric positions, leading to mechanical alternation and short games.
@@ -243,16 +247,27 @@ function allPayBid(
   chips: number,
   oppChips: number,
   baseBid: number,
-  shade: number
+  shade: number,
+  isHolder = false
 ): number {
   if (adjusted <= 0) return 0;
   const valueChips = evalPointsToChips(adjusted, chips);
   const target = Math.floor(valueChips * shade);
   const oppMaxModel = estimateOppMaxBid(state, opponentOf(color), oppChips);
   // Cheap-win path: if opp's modelled max is well below our shaded
-  // target, bid just above it instead of over-paying.
-  const minToWin = oppMaxModel + 3;
-  const cheap = minToWin < target ? minToWin : target;
+  // target, bid just above it instead of over-paying. The bump differs
+  // by holder status: as holder, ties go to us so +0 suffices; as
+  // non-holder, we must bid strictly above (we use +2 for safety
+  // against estimator noise).
+  const tieBump = isHolder ? 0 : 2;
+  const minToWin = oppMaxModel + tieBump;
+  let cheap = minToWin < target ? minToWin : target;
+  // Apply tiebump even when target dominates: in symmetric oni-vs-oni
+  // positions both sides compute the same `target` and tie. Non-holder
+  // pays its bid in all-pay → losing a tie is wasteful. The +1
+  // ensures non-holder beats a holder whose bid converges to the same
+  // target.
+  if (!isHolder) cheap += 1;
   return Math.max(baseBid, cheap);
 }
 
@@ -415,14 +430,38 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   // matches the depth pickOniMove will use; budget bounds it to ~600ms.
   const depth = empties <= 14 ? 10 : empties <= 22 ? 9 : 8;
   const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true, 700);
-  const adjusted = isHolder ? delta - TOKEN_COST : delta;
+  // ONI_BID_V2 selects between two bidding regimes for A/B testing:
+  //   v2 (default): holder/non-holder asymmetric base + symmetric token cost
+  //                 + relaxed endgame cap
+  //   v1: legacy uniform base + holder-only token cost + 0.92 cap
+  const useV2 = oniBidV2();
+  // Token cost applies to BOTH sides under v2: holder loses token by winning,
+  // non-holder gains token by losing — so the win-vs-lose differential is
+  // identical. Under v1, only the holder is adjusted (legacy behaviour).
+  const adjusted = useV2 ? delta - TOKEN_COST : isHolder ? delta - TOKEN_COST : delta;
 
-  // Sparse-board (early opening) base: bid higher to avoid the
-  // opponent matching us at the base and stealing T1 via tie-as-holder.
+  // Asymmetric base bid (v2): holder bids low (ties favour them, conserves
+  // chips), non-holder bids slightly higher to break ties. Previously both
+  // sides bid the high `chips * 0.16 + 1` base in sparse openings, which
+  // under all-pay caused both to burn ~17 chips/round in symmetric positions
+  // (loser pays 17 for nothing). The new asymmetry makes the holder save
+  // chips by accepting placement losses (token retained) and the non-holder
+  // pay a small premium to take placements (token transfers via opp's move).
   const sparse = empties >= 50;
-  const baseBid = sparse
-    ? Math.max(3, Math.floor(chips * 0.16) + 1)
-    : Math.max(3, Math.floor(chips * 0.1));
+  let baseBid: number;
+  if (useV2) {
+    const baseHolderRatio = sparse ? 0.04 : 0.06;
+    const baseNonHolderRatio = sparse ? 0.10 : 0.10;
+    const baseRatio = isHolder ? baseHolderRatio : baseNonHolderRatio;
+    baseBid = Math.max(
+      isHolder ? 1 : 3,
+      Math.floor(chips * baseRatio) + (isHolder ? 0 : 1)
+    );
+  } else {
+    baseBid = sparse
+      ? Math.max(3, Math.floor(chips * 0.16) + 1)
+      : Math.max(3, Math.floor(chips * 0.1));
+  }
 
   let bid = baseBid;
 
@@ -437,8 +476,18 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     // All-pay strategy for oni: shade 0.85 of value (high confidence
     // from deep search) but cheap-win against weak bidders via the
     // history model. Critical positions are bumped further by the
-    // tieredDefenseBid call below.
-    bid = allPayBid(state, color, adjusted, chips, oppChips, baseBid, 0.85);
+    // tieredDefenseBid call below. Holder-aware tieBump (v2 only):
+    // +0 for holder, +2 for non-holder.
+    bid = allPayBid(
+      state,
+      color,
+      adjusted,
+      chips,
+      oppChips,
+      baseBid,
+      0.85,
+      useV2 ? isHolder : false
+    );
   } else if (adjusted > 0) {
     const valueChips = evalPointsToChips(adjusted, chips);
     // Shading factor by auction type:
@@ -447,7 +496,9 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     //  - Vickrey:     ~92% (close to truthful but reserve tiny margin)
     const shade = isVickrey ? 0.92 : 0.6;
     const target = Math.floor(valueChips * shade * conservation);
-    bid = Math.max(bid, target + 2);
+    // Holder doesn't need a tie-break bump under v2 (ties favour holder).
+    const tieBump = useV2 ? (isHolder ? 0 : 2) : 2;
+    bid = Math.max(bid, target + tieBump);
   } else if (adjusted < -150) {
     // We don't want to win — minimize bid (but still positive base).
     bid = Math.max(0, Math.floor(-adjusted * 0.04));
@@ -465,8 +516,31 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   );
   if (defenseBid > 0) bid = Math.max(bid, defenseBid);
 
-  const cap = Math.max(1, Math.floor(chips * 0.92));
+  // Endgame all-in (v2 only): with very few bidding rounds left, the chip cap
+  // should approach 100% — saving chips for "later" is wasteful when there
+  // is no later. Cap relaxes from 0.92 to ~1.0 in true endgame.
+  const capRatio = useV2
+    ? estimatedRemainingBids <= 2
+      ? 1.0
+      : estimatedRemainingBids <= 4
+        ? 0.96
+        : 0.92
+    : 0.92;
+  const cap = Math.max(1, Math.floor(chips * capRatio));
   return clampBid(Math.min(bid, cap), state, color);
+}
+
+/**
+ * Selects the oni bidding regime. Default v2 (improved). Set
+ * `ONI_BID_V2=0` to revert to legacy v1 behaviour for A/B testing.
+ */
+function oniBidV2(): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  if (!proc || !proc.env) return true;
+  const v = proc.env.ONI_BID_V2 as string | undefined;
+  if (v === undefined || v === '') return true;
+  return v !== '0' && v !== 'false' && v.toLowerCase() !== 'no';
 }
 
 export function decideMove(

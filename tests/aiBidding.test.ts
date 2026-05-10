@@ -67,13 +67,19 @@ describe('bidding: defence does not panic-bid', () => {
 describe('bidding: Vickrey-aware', () => {
   it('AI bids higher in Vickrey than first-price for the same position', () => {
     const seed = 7;
-    const stateFP: GameState = initGame({ initialChips: 200 });
-    const stateVP: GameState = {
-      ...stateFP,
-      options: { ...stateFP.options, auctionType: 'second-price' },
+    // Compare first-price vs second-price (Vickrey) explicitly. The default
+    // auction is all-pay; we override to first-price for a meaningful
+    // shade comparison. Vickrey's shade (~0.92) is closer to truthful than
+    // first-price's (~0.6), so Vickrey bid ≥ first-price bid.
+    const baseState: GameState = initGame({ initialChips: 200 });
+    const stateFP: GameState = {
+      ...baseState,
+      options: { ...baseState.options, auctionType: 'first-price' },
     };
-    // Same position, same color → same delta. Vickrey shading is closer
-    // to truthful (higher than first-price shading).
+    const stateVP: GameState = {
+      ...baseState,
+      options: { ...baseState.options, auctionType: 'second-price' },
+    };
     const fp = decideBid(
       { state: stateFP, color: 'BLACK', level: 'oni' },
       makeRng(seed)
