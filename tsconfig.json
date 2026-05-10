@@ -19,5 +19,5 @@
     "allowSyntheticDefaultImports": true,
     "types": ["vitest/globals", "vite/client"]
   },
-  "include": ["src", "tests", "server"]
+  "include": ["src", "tests"]
 }
