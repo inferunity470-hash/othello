@@ -125,6 +125,63 @@ export function cornerControl(board: Board, color: Color): number {
   return 25 * (mine - theirs);
 }
 
+/**
+ * Context-aware corner-adjacent evaluation. Static positional weights
+ * penalise X (-50) and C (-25) cells uniformly, but the actual cost
+ * depends on whether the adjacent corner is *taken*:
+ *
+ *   - Corner empty + X-square owned: BIG penalty for the X owner
+ *     (the opponent can typically force the corner)
+ *   - Corner empty + C-square owned: smaller penalty for the C owner
+ *   - Corner owned: same-color X / C are safe (anchored bonus)
+ *   - Corner owned: opposite-color X / C are dead frontier (penalty)
+ *
+ * Implementation: compute a per-cell *signed* contribution from BLACK's
+ * perspective (positive = good for BLACK), then negate for WHITE so the
+ * function satisfies `f(b, BLACK) === -f(b, WHITE)` (negamax invariant).
+ */
+export function cornerAdjacentScore(board: Board, color: Color): number {
+  const groups: Array<{
+    corner: [number, number];
+    x: [number, number];
+    cs: Array<[number, number]>;
+  }> = [
+    { corner: [0, 0], x: [1, 1], cs: [[0, 1], [1, 0]] },
+    { corner: [0, 7], x: [1, 6], cs: [[0, 6], [1, 7]] },
+    { corner: [7, 0], x: [6, 1], cs: [[6, 0], [7, 1]] },
+    { corner: [7, 7], x: [6, 6], cs: [[6, 7], [7, 6]] },
+  ];
+  // Returns a sign multiplier: +1 if cell == BLACK, -1 if WHITE, 0 if empty.
+  const sign = (r: number, c: number): number => {
+    const v = board[r][c];
+    return v === 'BLACK' ? 1 : v === 'WHITE' ? -1 : 0;
+  };
+  let s = 0;
+  for (const g of groups) {
+    const cs = sign(g.corner[0], g.corner[1]);
+    const xs = sign(g.x[0], g.x[1]);
+    if (cs === 0) {
+      // Empty corner: penalise the X owner heavily, C owners moderately.
+      // `xs` already encodes the owner sign, and we want to PENALISE
+      // ownership → subtract.
+      s -= xs * 30;
+      for (const [cr, cc] of g.cs) {
+        s -= sign(cr, cc) * 12;
+      }
+    } else {
+      // Corner is taken. Same-color X is anchored (bonus to that side);
+      // opposite-color X is dead frontier (penalty to that side).
+      // `cs * xs` is +1 when same color, -1 when different.
+      s += cs * xs * 10;
+      for (const [cr, cc] of g.cs) {
+        s += cs * sign(cr, cc) * 4;
+      }
+    }
+  }
+  // Above accumulates from BLACK's perspective. Flip for WHITE.
+  return color === 'BLACK' ? s : -s;
+}
+
 export function stoneDifference(board: Board, color: Color): number {
   const { BLACK, WHITE } = countStones(board);
   const mine = color === 'BLACK' ? BLACK : WHITE;
@@ -314,6 +371,23 @@ export function parityScore(board: Board, color: Color, sideToMove: Color): numb
 }
 
 /**
+ * Runtime multiplier for the experimental `cornerAdjacentScore` term.
+ * Default is 0 (disabled) — see the long comment in `evaluateBoard`
+ * for the empirical reasoning. Setting `ONI_CORNER_ADJ=1` enables the
+ * term at the constants embedded below; intermediate values scale them
+ * proportionally.
+ */
+function cornerAdjMultiplier(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  if (!proc || !proc.env) return 0;
+  const v = proc.env.ONI_CORNER_ADJ as string | undefined;
+  if (v === undefined || v === '') return 0;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
  * Phase-aware evaluator. Negamax-friendly: result for `color` always equals
  * the negation of the result for `opponentOf(color)` (within fp rounding).
  */
@@ -323,34 +397,48 @@ export function evaluateBoard(board: Board, color: Color): number {
   if (empty === 0) {
     return stoneDifference(board, color) * 1000;
   }
+  const adjMul = cornerAdjMultiplier();
+  // cornerAdjacentScore is theoretically sound (corrects positionalScore's
+  // static X/C penalty when the adjacent corner is owned) but empirical
+  // A/B testing on offline-launch did NOT find a strength improvement
+  // at any tested weight: at 1.5/2.0/0.8 oni dropped from 5-1 → 3-3
+  // vs intermediate (chips=50, 6 games), and at 0.4/0.5/0.2 win rate
+  // matched 5-1 but with smaller margins. The conservative default is
+  // therefore weight 0 (term computed but inert). Override at runtime
+  // via `ONI_CORNER_ADJ` (the multiplier on the constants below):
+  //   ONI_CORNER_ADJ=1   → enables at weights 1.5/2.0/0.8
+  //   ONI_CORNER_ADJ=0.3 → enables at 0.45/0.6/0.24
+  //   ONI_CORNER_ADJ=0   → disabled (default)
+  // The function is exported and tested for negamax antisymmetry so
+  // future weight tuning can re-enable it without code changes.
   if (filled < 20) {
-    // Opening: position, mobility, corners, frontier, stable, potential mobility
     return (
       positionalScore(board, color) * 1.0 +
       mobilityScore(board, color) * 6.0 +
       cornerControl(board, color) * 14.0 +
+      cornerAdjacentScore(board, color) * 1.5 * adjMul +
       frontierScore(board, color) * 2.0 +
       stableDiscScore(board, color) * 4.0 +
       potentialMobilityScore(board, color) * 3.0
     );
   }
   if (filled < 50) {
-    // Midgame: stability + corners dominate
     return (
       positionalScore(board, color) * 1.0 +
       mobilityScore(board, color) * 5.0 +
       cornerControl(board, color) * 16.0 +
+      cornerAdjacentScore(board, color) * 2.0 * adjMul +
       frontierScore(board, color) * 2.5 +
       stableDiscScore(board, color) * 8.0 +
       potentialMobilityScore(board, color) * 2.5 +
       stoneDifference(board, color) * 0.5
     );
   }
-  // Endgame: stones, stability and parity dominate
   return (
     positionalScore(board, color) * 0.4 +
     mobilityScore(board, color) * 1.0 +
     cornerControl(board, color) * 10.0 +
+    cornerAdjacentScore(board, color) * 0.8 * adjMul +
     stableDiscScore(board, color) * 12.0 +
     potentialMobilityScore(board, color) * 0.5 +
     stoneDifference(board, color) * 6.0
