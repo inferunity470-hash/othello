@@ -88,6 +88,21 @@ function generateRoomCode(): string {
   throw new Error('cannot generate room code');
 }
 
+// Allowed origins for WebSocket upgrades. Set ALLOWED_ORIGINS to a
+// comma-separated list (e.g. https://my-game.vercel.app,https://otherapp.com).
+// When unset, allow any origin (development convenience). In production
+// the env var should be set to lock the server to known clients.
+const ALLOWED_ORIGINS: string[] = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+// Per-connection rate limit: max messages per window
+const RATE_LIMIT_WINDOW_MS = 1000;
+const RATE_LIMIT_MAX_PER_WINDOW = 30;
+// Max bytes per WS message (chats, bids, etc.). 4KB is plenty.
+const MAX_MESSAGE_BYTES = 4096;
+
 // Wrap the WS server in an HTTP server so platforms that health-check
 // via plain HTTP (Render, Fly.io, Railway) can accept the deployment.
 // `/healthz` always returns 200; everything else describes the service.
@@ -100,18 +115,65 @@ const httpServer = createServer((req, res) => {
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('not found');
 });
-const wss = new WebSocketServer({ server: httpServer });
+// `verifyClient` is invoked during the WS upgrade handshake so we can
+// reject connections from unexpected origins before the socket opens.
+const wss = new WebSocketServer({
+  server: httpServer,
+  verifyClient: (info: { origin: string; req: import('node:http').IncomingMessage }) => {
+    if (ALLOWED_ORIGINS.length === 0) return true;
+    const origin = info.origin ?? info.req.headers.origin;
+    if (!origin) return false;
+    return ALLOWED_ORIGINS.some(o => o === origin);
+  },
+  maxPayload: MAX_MESSAGE_BYTES,
+});
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`[othello-bidding] WebSocket server listening on :${PORT}`);
+  if (ALLOWED_ORIGINS.length === 0) {
+    console.log('[othello-bidding] ALLOWED_ORIGINS unset — accepting all origins');
+  } else {
+    console.log(`[othello-bidding] Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+  }
 });
 
 wss.on('connection', ws => {
   let joinedCode: string | null = null;
   let myColor: Color | 'SPECTATE' | null = null;
+  // Sliding window rate limiter (timestamps of recent messages).
+  const messageTimestamps: number[] = [];
 
   const reply = (msg: ServerMsg) => send(ws, msg);
 
   ws.on('message', raw => {
+    // Enforce maximum message size (also enforced by `maxPayload` at
+    // the protocol layer; this is a defense-in-depth check).
+    const buf = raw as Buffer;
+    if (buf.length > MAX_MESSAGE_BYTES) {
+      reply({
+        t: 'ERROR',
+        code: 'INTERNAL_ERROR',
+        message: 'Message too large',
+      });
+      return;
+    }
+    // Per-connection rate limit: drop messages exceeding N per window.
+    const now = Date.now();
+    while (
+      messageTimestamps.length > 0 &&
+      messageTimestamps[0] < now - RATE_LIMIT_WINDOW_MS
+    ) {
+      messageTimestamps.shift();
+    }
+    if (messageTimestamps.length >= RATE_LIMIT_MAX_PER_WINDOW) {
+      reply({
+        t: 'ERROR',
+        code: 'INTERNAL_ERROR',
+        message: 'Rate limit exceeded — slow down',
+      });
+      return;
+    }
+    messageTimestamps.push(now);
+
     let msg: ClientMsg;
     try {
       msg = JSON.parse(raw.toString());

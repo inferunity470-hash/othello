@@ -1,4 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   applyPlacement,
   expectedMover,
@@ -19,7 +26,11 @@ import { ResultCard } from './ResultCard';
 import { HelpOverlay } from './HelpOverlay';
 import { Tour, shouldShowTour } from './Tour';
 import { AILevel, decideBid, decideMove } from '../core/ai';
-import { OnlineLobby } from './OnlineLobby';
+// OnlineLobby pulls in PartyClient + WebSocket plumbing that's irrelevant
+// for hotseat / NPC players. Lazy-load it to keep the initial bundle lean.
+const OnlineLobby = lazy(() =>
+  import('./OnlineLobby').then(mod => ({ default: mod.OnlineLobby }))
+);
 import { saveGame, loadGame, clearSave, getPref, setPref } from './storage';
 import { setEnabled as setSoundEnabled, isEnabled as isSoundEnabled } from './sound';
 import { useI18n } from '../i18n';
@@ -140,7 +151,15 @@ export function App() {
         />
       )}
       {mode.kind === 'online' && (
-        <OnlineLobby onExit={() => setMode({ kind: 'lobby' })} />
+        <Suspense
+          fallback={
+            <div className="lobby">
+              <span className="spinner" /> オンラインモジュールを読み込み中...
+            </div>
+          }
+        >
+          <OnlineLobby onExit={() => setMode({ kind: 'lobby' })} />
+        </Suspense>
       )}
       {help && <HelpOverlay onClose={() => setHelp(false)} />}
       {tour && <Tour onClose={() => setTour(false)} />}
@@ -174,6 +193,27 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
         >
           🌐 友達とオンライン
         </button>
+      </div>
+
+      <div className="row">
+        <button
+          className="primary"
+          style={{ fontSize: '1.05rem' }}
+          onClick={() =>
+            onStart({
+              kind: 'vs-ai',
+              options: { ...DEFAULT_OPTIONS },
+              aiColor: 'WHITE',
+              level: 'intermediate',
+            })
+          }
+          title="200 チップ・オールペイ・中級 NPC で即対局"
+        >
+          ⚡ クイック対局 (中級 NPC)
+        </button>
+        <span className="muted" style={{ fontSize: '0.85rem' }}>
+          まずはこれから。設定変更は下のフォームで。
+        </span>
       </div>
 
       <div className="row">

@@ -1,8 +1,17 @@
 # ビッド式オセロ (Othello with Bidding)
 
+[![CI](https://github.com/inferunity470-hash/othello/actions/workflows/ci.yml/badge.svg)](https://github.com/inferunity470-hash/othello/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 通常のオセロをベースに、各手番の着手権を **両者が秘密入札 (ビッド) で取り合う** ゲーム。
 チップは支払うたびに場へ消えるため、ゲーム進行とともに資源が漸減します。
-詳細仕様は要望書 v2 (本リポジトリで実装済み) を参照。
+
+3 種類の競売方式 (ファースト / セカンド / **オールペイ** ←デフォルト) と、
+4 段階の AI 難度 (初級 / 中級 / 上級 / **鬼**) を実装。フレンドとオンライン
+対戦も可能 (WebSocket サーバ + 再戦機能 + 自動再 JOIN)。
+
+ルール詳細: [docs/RULES.md](docs/RULES.md)
+AI 設計: [docs/AI.md](docs/AI.md)
 
 ## 起動方法
 
@@ -119,6 +128,32 @@ server/         WebSocket サーバ (オンライン対戦用)
 tests/          Vitest テスト
 ```
 
+## 環境変数 (本番デプロイ時)
+
+| 変数 | 用途 | 設定先 |
+|---|---|---|
+| `VITE_WS_URL` | WS サーバの URL (`wss://...`) | Vercel |
+| `VITE_ERROR_WEBHOOK_URL` | フロント側エラー報告先 (任意) | Vercel |
+| `VITE_APP_VERSION` | エラーレポートに付与するバージョン (任意) | Vercel |
+| `PORT` | WS サーバの待ち受けポート | Render (自動設定される) |
+| `ALLOWED_ORIGINS` | カンマ区切りの許可オリジン (例 `https://my-app.vercel.app`)。未設定時は全許可 (開発向け) | Render |
+
+## セキュリティ
+
+- WS サーバは `ALLOWED_ORIGINS` で接続元を制限可能
+- 1 接続あたり 30 msg/sec の rate limit
+- メッセージサイズ上限 4KB
+- 入札の秘匿はサーバ側で物理的に保証
+
+## 関連ドキュメント
+
+- [LICENSE](LICENSE) — MIT
+- [PRIVACY.md](PRIVACY.md) — プライバシーポリシー
+- [TERMS.md](TERMS.md) — 利用規約
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 開発参加ガイド
+- [docs/RULES.md](docs/RULES.md) — ルール仕様書
+- [docs/AI.md](docs/AI.md) — AI 設計
+
 ## ライセンス
 
-本コードは `inferunity470-hash/othello` リポジトリの一部として配布。
+MIT License — 詳細は [LICENSE](LICENSE) を参照。
