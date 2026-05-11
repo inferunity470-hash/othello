@@ -154,31 +154,34 @@ function pickAlphaBetaMove(
 
 function pickOniMove(state: GameState, mover: Color): { row: number; col: number } {
   const empties = countEmpty(state.board);
-  // Endgame: solve exactly when ≤ 16 empties (TT-cached endgame solver
-  // makes 16-empty solves feasible; 2 plies more exact play than the
-  // previous ≤14 trigger).
-  // Midgame: deep PVS with TT + iterative deepening + aspiration
-  // windows. Time budgets bound each move for UI snappiness; iterative
-  // deepening returns the last completed iteration's move.
+  // NPC-mode final strengthening (v2.2): time budgets bumped ~40% across all
+  // phases, exact endgame solve extended from 16 → 18 empties, midgame
+  // depth bumped 12→14 / 10→11. Original budgets were tuned for UI snappiness
+  // in online play; offline NPC mode allows deeper thinking.
+  //
+  //   - empties ≤ 10: maxDepth 22, exact endgame, 4500ms (was 3000ms)
+  //   - empties ≤ 18: maxDepth 20, exact endgame, 3500ms (was depth 18 / 2500ms / ≤16)
+  //   - empties ≤ 22: maxDepth 14, midgame PVS, 2200ms (was depth 12 / 1500ms)
+  //   - else:         maxDepth 11, opening/midgame PVS, 1400ms (was depth 10 / 1000ms)
   let maxDepth: number;
   let exactEndgameEmpties: number;
   let timeBudgetMs: number | undefined;
   if (empties <= 10) {
     maxDepth = 22;
     exactEndgameEmpties = empties;
-    timeBudgetMs = 3000;
-  } else if (empties <= 16) {
-    maxDepth = 18;
+    timeBudgetMs = 4500;
+  } else if (empties <= 18) {
+    maxDepth = 20;
     exactEndgameEmpties = empties;
-    timeBudgetMs = 2500;
+    timeBudgetMs = 3500;
   } else if (empties <= 22) {
-    maxDepth = 12;
+    maxDepth = 14;
     exactEndgameEmpties = 0;
-    timeBudgetMs = 1500;
+    timeBudgetMs = 2200;
   } else {
-    maxDepth = 10;
+    maxDepth = 11;
     exactEndgameEmpties = 0;
-    timeBudgetMs = 1000;
+    timeBudgetMs = 1400;
   }
   const r = strongSearch(state.board, mover, {
     maxDepth,
@@ -426,10 +429,11 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
 
   // oni
   const empties = countEmpty(state.board);
-  // Bid evaluation is a *forecast* of the upcoming move's value. Depth 8-10
-  // matches the depth pickOniMove will use; budget bounds it to ~600ms.
-  const depth = empties <= 14 ? 10 : empties <= 22 ? 9 : 8;
-  const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true, 700);
+  // Bid evaluation is a *forecast* of the upcoming move's value. Depths
+  // bumped +1 in v2.2 (NPC-mode final strengthening): 11/10/9 from 10/9/8,
+  // time budget 900ms from 700ms.
+  const depth = empties <= 14 ? 11 : empties <= 22 ? 10 : 9;
+  const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true, 900);
   // ONI_BID_V2 selects between two bidding regimes for A/B testing:
   //   v2 (default): holder/non-holder asymmetric base + symmetric token cost
   //                 + relaxed endgame cap
