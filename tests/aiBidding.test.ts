@@ -144,6 +144,73 @@ describe('bidding: opp-modelling estimate ranges', () => {
   });
 });
 
+// T14 regression: the "all-in then zero-bid drain" exploit. A human can bid
+// 100% on turn 1 and then 0 for every following turn. Without a counter,
+// the oni keeps paying ~5% of chips per turn while the human conserves —
+// stone parity + tieBreaker:'CHIPS' then makes the human win. Verify the
+// oni now matches at 0/1 once the human's zero-bid pattern is established.
+describe('T14: zero-bid drain counter (chip tieBreaker exploit)', () => {
+  function playOneTurnWithBids(
+    s: GameState,
+    blackBid: number,
+    whiteBid: number,
+    rng: () => number
+  ): GameState {
+    if (s.phase !== 'BIDDING') return s;
+    s = setPendingBid(s, 'BLACK', blackBid);
+    s = setPendingBid(s, 'WHITE', whiteBid);
+    s = resolvePendingBids(s).state;
+    while (
+      s.phase === 'PLACING' ||
+      s.phase === 'FREE_MOVE' ||
+      s.phase === 'FINAL_MOVE'
+    ) {
+      const mover = expectedMover(s);
+      if (!mover) break;
+      const moves = legalMoves(s.board, mover);
+      if (moves.length === 0) break;
+      // Use beginner for the placement leg so the position evolves
+      // realistically. The exploit being tested is about bidding, not move quality.
+      const m = decideMove(s, mover, 'beginner', rng);
+      s = applyPlacement(s, mover, m.row, m.col);
+    }
+    return s;
+  }
+
+  it('oni bids 0 or 1 after the opponent has bid 0 for 3 consecutive turns', () => {
+    const rng = makeRng(7);
+    let s: GameState = initGame({ initialChips: 100, auctionType: 'all-pay' });
+    // 3 turns of (human=0, oni=baseBid). Use beginner stub for oni's move
+    // placement so we don't recurse through decideBid here.
+    for (let i = 0; i < 3; i++) {
+      // Use a synthetic oni-side bid of 5 (sparse opening baseBid) so the
+      // history records non-zero oni bids while the human is the all-zero
+      // side under test.
+      s = playOneTurnWithBids(s, 0, 5, rng);
+    }
+    if (s.phase !== 'BIDDING') return; // game ended early — exploit not even applicable
+    const oniBid = decideBid({ state: s, color: 'WHITE', level: 'oni' }, rng);
+    expect(oniBid).toBeLessThanOrEqual(1);
+  });
+
+  it('after the all-in-then-zero opening, the oni does not keep paying baseBid', () => {
+    const rng = makeRng(11);
+    let s: GameState = initGame({ initialChips: 100, auctionType: 'all-pay' });
+    // T1: human all-in 100, oni small bid -> human wins token, both pay
+    s = playOneTurnWithBids(s, 100, 5, rng);
+    // T2..T4: human always 0; oni responds with its own decideBid output.
+    for (let t = 0; t < 3 && s.phase !== 'ENDED'; t++) {
+      if (s.phase !== 'BIDDING') break;
+      const oniBid = decideBid({ state: s, color: 'WHITE', level: 'oni' }, rng);
+      s = playOneTurnWithBids(s, 0, oniBid, rng);
+    }
+    if (s.phase !== 'BIDDING') return;
+    // By now there are ≥3 consecutive human-zero rounds in history.
+    const oniBid = decideBid({ state: s, color: 'WHITE', level: 'oni' }, rng);
+    expect(oniBid).toBeLessThanOrEqual(1);
+  });
+});
+
 // H10 regression: deltaValueOfMoving used to pass the same time budget to two
 // sequential strongSearch calls. If the first burned the budget, the second
 // returned a partial / depth-0 score and delta became meaningless. The new

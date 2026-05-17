@@ -389,10 +389,20 @@ function estimateOppMaxBid(
   if (past.length === 0) return oppChips;
   let maxBid = 0;
   let total = 0;
+  let zeroCount = 0;
   for (const t of past) {
     const b = (t.bids![oppColor] as number) ?? 0;
     if (b > maxBid) maxBid = b;
+    if (b === 0) zeroCount++;
     total += b;
+  }
+  // Zero-bid exploit guard: when the opponent has consistently bid 0 in
+  // the recent window, their realistic max bid for the next turn is 0/1,
+  // not 25% of their stack. Without this guard the oni keeps paying
+  // chips* 0.05 against zero-bid responses and loses on the chip
+  // tieBreaker (scoring.ts: 'CHIPS'). See codex-review-T14.
+  if (past.length >= 3 && zeroCount === past.length) {
+    return 1;
   }
   const avg = total / past.length;
   // Allow for escalation: 2x recent max OR 4x average OR 25% of stack,
@@ -401,6 +411,22 @@ function estimateOppMaxBid(
   // we don't underbid when the opponent ramps each turn.
   const estimate = Math.max(maxBid * 2, avg * 4, oppChips * 0.25);
   return Math.min(oppChips, Math.ceil(estimate));
+}
+
+/**
+ * Detect the "zero-bid drain" exploit: opponent has bid 0 in every recent
+ * round (at least N samples). When this is true, the chip-tieBreaker
+ * threatens to flip a 32-32 stone tie into a loss for the oni, so it
+ * should match the opponent at 0/1 instead of paying baseBid * chips * 5%.
+ */
+function detectOpponentZeroBidAbuse(state: GameState, oppColor: Color): boolean {
+  const past = state.history.filter(t => t.bids != null).slice(-5);
+  if (past.length < 3) return false;
+  for (const t of past) {
+    const b = (t.bids![oppColor] as number) ?? 0;
+    if (b !== 0) return false;
+  }
+  return true;
 }
 
 /**
@@ -631,6 +657,16 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     'oni'
   );
   if (defenseBid > 0) bid = Math.max(bid, defenseBid);
+
+  // Zero-bid drain counter (codex-review-T14): when the human consistently
+  // bids 0 to abuse the chip tieBreaker, match them at 0 (holder) or 1
+  // (non-holder). The defenseBid floor still kicks in for genuinely
+  // critical positions, so this only suppresses the wasteful baseBid
+  // chunk in non-tactical sparse opening/midgame moves.
+  if (detectOpponentZeroBidAbuse(state, opponentOf(color))) {
+    const minCounter = isHolder ? 0 : 1;
+    bid = Math.max(minCounter, defenseBid);
+  }
 
   // Endgame all-in (v2 only): with very few bidding rounds left, the chip cap
   // should approach 100% — saving chips for "later" is wasteful when there
