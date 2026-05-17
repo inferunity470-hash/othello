@@ -395,7 +395,14 @@ export function evaluateBoard(board: Board, color: Color): number {
   const empty = countEmpty(board);
   const filled = 64 - empty;
   if (empty === 0) {
-    return stoneDifference(board, color) * 1000;
+    // H11: align with the both-pass terminal score used by pvs/exactEndgame
+    // (`(mine - theirs) * 1000`). The old percentage-based scale (stones /
+    // 64 * 100 * 1000) produced inconsistent values for the same terminal
+    // position depending on which code path observed it.
+    const { BLACK, WHITE } = countStones(board);
+    const mine = color === 'BLACK' ? BLACK : WHITE;
+    const theirs = color === 'BLACK' ? WHITE : BLACK;
+    return (mine - theirs) * 1000;
   }
   const adjMul = cornerAdjMultiplier();
   // cornerAdjacentScore is theoretically sound (corrects positionalScore's

@@ -42,16 +42,33 @@ function deltaValueOfMoving(
   let myScore: number;
   let oppScore: number;
   if (useStrong) {
+    // H10: split the time budget between the two strongSearch calls so the
+    // second side cannot starve. If either side reaches depth 0 (no completed
+    // iteration), fall back to a bounded synchronous alphabeta to keep delta
+    // meaningful instead of returning arbitrary partial scores.
+    const half =
+      timeBudgetMs == null ? undefined : Math.max(1, Math.floor(timeBudgetMs / 2));
     const me = strongSearch(state.board, color, {
       maxDepth: depth,
       exactEndgameEmpties: 0,
-      timeBudgetMs,
+      timeBudgetMs: half,
     });
     const them = strongSearch(state.board, opp, {
       maxDepth: depth,
       exactEndgameEmpties: 0,
-      timeBudgetMs,
+      timeBudgetMs: half,
     });
+    if (me.depthReached === 0 || them.depthReached === 0) {
+      // Fallback: shallow deterministic comparison rather than partial scores.
+      const fallbackDepth = Math.min(3, depth);
+      const myBest = alphabeta(state.board, color, fallbackDepth, -Infinity, Infinity, color);
+      const oppBest = alphabeta(state.board, opp, fallbackDepth, -Infinity, Infinity, color);
+      return {
+        delta: myBest.score - oppBest.score,
+        myBest: myBest.score,
+        oppBest: oppBest.score,
+      };
+    }
     // strongSearch returns scores from the searcher's POV. Convert opp's
     // score to `color`'s POV by negation.
     myScore = me.score;

@@ -158,6 +158,63 @@ describe('AI internals', () => {
     });
   });
 
+  // H11 regression: evaluateBoard(empty=0) must use the same scale as the
+  // both-pass terminal score in pvs/exactEndgame, namely (mine - theirs) * 1000.
+  describe('H11: evaluateBoard full-board scale consistency', () => {
+    function fullBoardWithCounts(blackCount: number): Board {
+      const b: Board = Array.from({ length: 8 }, () =>
+        Array.from({ length: 8 }, () => 'WHITE' as Color | null)
+      );
+      let placed = 0;
+      outer: for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          if (placed >= blackCount) break outer;
+          b[r][c] = 'BLACK';
+          placed++;
+        }
+      }
+      return b;
+    }
+
+    it('returns (mine - theirs) * 1000 for a 33-31 black-majority terminal', () => {
+      const b = fullBoardWithCounts(33);
+      expect(evaluateBoard(b, 'BLACK')).toBe(2 * 1000);
+      expect(evaluateBoard(b, 'WHITE')).toBe(-2 * 1000);
+    });
+
+    it('returns 0 for a 32-32 draw at terminal', () => {
+      const b = fullBoardWithCounts(32);
+      expect(evaluateBoard(b, 'BLACK')).toBe(0);
+      expect(evaluateBoard(b, 'WHITE')).toBe(0);
+    });
+
+    it('is antisymmetric between colors at terminal (negamax invariant)', () => {
+      for (const blackCount of [10, 24, 40, 55]) {
+        const b = fullBoardWithCounts(blackCount);
+        expect(evaluateBoard(b, 'BLACK')).toBe(-evaluateBoard(b, 'WHITE'));
+      }
+    });
+  });
+
+  // H12 regression: aspiration window retries must be bounded so MATE-level
+  // scores cannot eat the whole time budget.
+  describe('H12: aspiration window retries are bounded', () => {
+    it('strongSearch with tiny time budget still returns a move (does not spin on aspiration misses)', () => {
+      ttClear();
+      const b = createInitialBoard();
+      const t0 = Date.now();
+      const r = strongSearch(b, 'BLACK', {
+        maxDepth: 12,
+        exactEndgameEmpties: 0,
+        timeBudgetMs: 50,
+      });
+      const dur = Date.now() - t0;
+      // Generous slack — main contract is "doesn't run for many seconds".
+      expect(dur).toBeLessThan(1500);
+      expect(r.move).toBeDefined();
+    });
+  });
+
   describe('TT hit/miss correctness', () => {
     it('storing then probing gives back the entry', () => {
       ttClear();

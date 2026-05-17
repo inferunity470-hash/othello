@@ -286,6 +286,16 @@ function pvs(
   }
 
   const killerSet = killers[ply] ?? { m: [null, null] };
+
+  // Internal Iterative Deepening (IID): when no TT move is available and the
+  // remaining depth is large enough, do a shallow search to get a likely-good
+  // first move for ordering. PVS is highly sensitive to first-move quality;
+  // even a depth-2 reduction here is worth the cost on deep iterations.
+  if (ttMove === null && depth >= 5 && Date.now() < stopAt) {
+    const iid = pvs(board, color, depth - 2, alpha, beta, passed, ply);
+    if (iid.move) ttMove = iid.move;
+  }
+
   orderMoves(moves, board, color, ttMove, killerSet);
 
   const origAlpha = alpha;
@@ -374,7 +384,13 @@ function pvs(
         killers[ply] = killerSet;
       }
       const idx = moveIndex(m);
-      history[idx] = (history[idx] | 0) + depth * depth;
+      // History saturation: cap to avoid any single cell dominating the
+      // ordering signal across many iterations. The decay every iteration
+      // (decayHistory) already mitigates drift; clamping additionally prevents
+      // overflow on long-running searches.
+      const MAX_HISTORY = 1 << 20;
+      const next = (history[idx] | 0) + depth * depth;
+      history[idx] = next > MAX_HISTORY ? MAX_HISTORY : next;
       break;
     }
   }
@@ -471,11 +487,15 @@ export function strongSearch(
     if (Date.now() > stopAt) break;
     // Aspiration miss: re-search with a widened window (grown
     // exponentially in case the eval is genuinely volatile).
+    // H12: cap the retry count to bound time spent on MATE-level scores,
+    // and fall back to a full-window search if the retries are exhausted.
+    const MAX_ASPIRATION_RETRIES = 4;
     let widen = 60;
+    let retries = 0;
     while (
       (r.score <= alpha || r.score >= beta) &&
       Date.now() < stopAt &&
-      widen <= 4 * INF
+      retries < MAX_ASPIRATION_RETRIES
     ) {
       if (r.score <= alpha) alpha -= widen;
       else if (r.score >= beta) beta += widen;
@@ -484,7 +504,17 @@ export function strongSearch(
       if (alpha < -INF) alpha = -INF;
       if (beta > INF) beta = INF;
       r = pvs(board, color, d, alpha, beta, false, 0);
+      retries++;
       if (alpha === -INF && beta === INF) break;
+    }
+    // If retries were exhausted and we still missed, do a single
+    // full-window search rather than accepting an unconverged score.
+    if (
+      (r.score <= alpha || r.score >= beta) &&
+      Date.now() < stopAt &&
+      (alpha !== -INF || beta !== INF)
+    ) {
+      r = pvs(board, color, d, -INF, INF, false, 0);
     }
     // If we ran out of time during the (possibly-widened) re-search,
     // discard this iteration's result and keep the previous one.
