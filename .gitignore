@@ -10,3 +10,14 @@ data/
 tsconfig.tsbuildinfo
 .vercel
 .env*.local
+
+# Capacitor iOS build artifacts (ios/.gitignore covers most; this is for cross-platform safety)
+ios/App/Pods/
+ios/App/build/
+ios/App/output/
+ios/App/App/public/
+ios/DerivedData/
+ios/**/xcuserdata/
+
+# macOS
+.DS_Store

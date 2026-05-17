@@ -7,7 +7,16 @@ import prettierConfig from 'eslint-config-prettier';
 
 export default [
   {
-    ignores: ['dist', 'node_modules', 'coverage', 'playwright-report', 'test-results'],
+    ignores: [
+      'dist',
+      'node_modules',
+      'coverage',
+      'playwright-report',
+      'test-results',
+      'ios',
+      'android',
+      'resources',
+    ],
   },
   js.configs.recommended,
   {
@@ -75,6 +84,18 @@ export default [
       globals: {
         process: 'readonly',
         Buffer: 'readonly',
+        global: 'readonly',
+        globalThis: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['scripts/**/*.{mjs,js,ts}'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        Buffer: 'readonly',
+        console: 'readonly',
         global: 'readonly',
         globalThis: 'readonly',
       },
