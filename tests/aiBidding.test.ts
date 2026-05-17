@@ -143,3 +143,21 @@ describe('bidding: opp-modelling estimate ranges', () => {
     expect(ai).toBeLessThanOrEqual(Math.floor(100 * 0.92));
   });
 });
+
+// H10 regression: deltaValueOfMoving used to pass the same time budget to two
+// sequential strongSearch calls. If the first burned the budget, the second
+// returned a partial / depth-0 score and delta became meaningless. The new
+// code splits the budget and falls back to a bounded alphabeta when either
+// side reaches depth 0. From the outside, decideBid must keep returning a
+// finite, non-negative integer regardless of repeated invocation.
+describe('H10: oni bid stays finite under hostile time conditions', () => {
+  it('decideBid returns a valid integer across repeated calls (budget pressure)', () => {
+    const s: GameState = initGame({ initialChips: 100 });
+    for (let i = 0; i < 6; i++) {
+      const v = decideBid({ state: s, color: 'BLACK', level: 'oni' });
+      expect(Number.isInteger(v)).toBe(true);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(100);
+    }
+  });
+});
