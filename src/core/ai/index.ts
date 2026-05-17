@@ -31,6 +31,88 @@ export interface AIBidContext {
  */
 const TOKEN_COST = 6;
 
+/**
+ * Feature flag: Fear Factor (Codex T11). When the opponent suddenly bids
+ * a value materially above their recent baseline, the oni shades its own
+ * bid down — except in critical positions where the floor protects the
+ * tactical value. Default off; set ONI_FEAR_FACTOR=1 to enable.
+ */
+function readFearFactor(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  if (!proc || !proc.env) return 0;
+  const v = proc.env.ONI_FEAR_FACTOR as string | undefined;
+  if (v === undefined || v === '') return 0;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Returns a fear score in [0, 1] indicating how strongly the opponent's
+ * latest bid signals an escalation relative to their recent baseline.
+ * Returns 0 when there is not enough history (no shading on early turns).
+ */
+function opponentFearScore(state: GameState, oppColor: Color): number {
+  const history = state.history;
+  if (!history || history.length < 4) return 0;
+  const FEAR_WINDOW = 5;
+  // Walk back collecting recent opponent bids (skip turns without a bid).
+  const recent: number[] = [];
+  for (let i = history.length - 1; i >= 0 && recent.length < FEAR_WINDOW + 1; i--) {
+    const t = history[i];
+    if (t.bids && typeof t.bids[oppColor] === 'number') {
+      recent.push(t.bids[oppColor] as number);
+    }
+  }
+  if (recent.length < 4) return 0;
+  // recent[0] is the latest opponent bid; the rest is the baseline.
+  const last = recent[0];
+  const baseline = recent.slice(1);
+  const mean = baseline.reduce((a, b) => a + b, 0) / baseline.length;
+  const max = Math.max(...baseline);
+  if (last < 2) return 0;
+  // Strong escalation: clearly above both the recent mean and max.
+  if (last >= mean * 1.8 && last >= max + 5) return 1.0;
+  if (last >= mean * 1.5 && last >= max + 2) return 0.6;
+  if (last >= mean * 1.25) return 0.3;
+  return 0;
+}
+
+function applyFearFactorToOniBid(
+  state: GameState,
+  color: Color,
+  bid: number,
+  defenseBid: number,
+  cap: number
+): number {
+  const intensity = readFearFactor();
+  if (intensity <= 0) return bid;
+  const fearScore = opponentFearScore(state, opponentOf(color));
+  if (fearScore <= 0) return bid;
+  const auctionType = state.options.auctionType;
+  // Intensity multipliers per auction type (Codex T11 §3).
+  const typeMul =
+    auctionType === 'all-pay'
+      ? 0.26
+      : auctionType === 'second-price'
+        ? 0.10
+        : 0.18;
+  const maxReduction =
+    auctionType === 'all-pay'
+      ? 0.35
+      : auctionType === 'second-price'
+        ? 0.16
+        : 0.25;
+  const reduction = Math.min(maxReduction, intensity * typeMul * fearScore);
+  let next = bid * (1 - reduction);
+  // Floor: never drop below the defense bid (critical-position protection)
+  // nor below the minimum legal bid.
+  const minBid = currentMinBid(state);
+  next = Math.max(next, defenseBid, minBid);
+  next = Math.min(next, cap);
+  return Math.round(next);
+}
+
 function deltaValueOfMoving(
   state: GameState,
   color: Color,
@@ -561,6 +643,10 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
         : 0.92
     : 0.92;
   const cap = Math.max(1, Math.floor(chips * capRatio));
+  // Fear factor (default off; ONI_FEAR_FACTOR=1 to enable). Applied after
+  // defenseBid is folded in and before the final cap/clamp so the floor
+  // remains the tactical minimum.
+  bid = applyFearFactorToOniBid(state, color, bid, defenseBid, cap);
   return clampBid(Math.min(bid, cap), state, color);
 }
 
