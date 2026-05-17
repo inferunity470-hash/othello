@@ -63,6 +63,26 @@ describe('UI smoke (jsdom)', () => {
     unmount();
   });
 
+  // H2 regression: roving tabindex — exactly one gridcell must be tabbable so
+  // the board is reachable by Tab even when no legal hints are shown.
+  it('BoardView exposes exactly one tabbable cell when legal hints are shown', () => {
+    const s = initGame();
+    const { container, unmount } = render(
+      <BoardView state={s} showLegalForColor="BLACK" />
+    );
+    const tabbable = container.querySelectorAll('.cell[tabindex="0"]');
+    expect(tabbable.length).toBe(1);
+    unmount();
+  });
+
+  it('BoardView exposes exactly one tabbable cell even in readOnly mode (no legal hints)', () => {
+    const s = initGame();
+    const { container, unmount } = render(<BoardView state={s} readOnly />);
+    const tabbable = container.querySelectorAll('.cell[tabindex="0"]');
+    expect(tabbable.length).toBe(1);
+    unmount();
+  });
+
   it('BidPanel calls onSubmit with the chosen amount', () => {
     const s = initGame();
     const onSubmit = vi.fn();
@@ -136,6 +156,18 @@ describe('UI smoke (jsdom)', () => {
     expect(getByDisplayValue(/中級/)).toBeTruthy();
     // Confirm 'oni' option exists
     expect(getByText(/鬼 ― 終盤完全解析/)).toBeTruthy();
+    unmount();
+  });
+
+  // H3 regression: keyboard users need a skip link pointing to the main region.
+  it('App renders a skip link targeting the main content', () => {
+    const { container, unmount } = render(<App />);
+    const skip = container.querySelector('a.skip-link');
+    expect(skip).toBeTruthy();
+    expect(skip?.getAttribute('href')).toBe('#main-content');
+    const main = container.querySelector('main#main-content');
+    expect(main).toBeTruthy();
+    expect(main?.getAttribute('tabindex')).toBe('-1');
     unmount();
   });
 });

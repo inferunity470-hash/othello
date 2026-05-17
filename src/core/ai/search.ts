@@ -256,7 +256,11 @@ function pvs(
   if (tt) {
     ttHits++;
     if (tt.bestRow >= 0) ttMove = { row: tt.bestRow, col: tt.bestCol };
-    if (tt.depth >= depth) {
+    // H9: at root (ply === 0) require a usable TT move before short-circuiting,
+    // otherwise the caller falls back to pickGreedyMove and the 鬼 looks weaker
+    // than its evaluation suggests.
+    const canCut = ply > 0 || ttMove !== null;
+    if (canCut && tt.depth >= depth) {
       if (tt.flag === 'EXACT') return { score: tt.score, move: ttMove ?? undefined };
       if (tt.flag === 'LOWER' && tt.score >= beta)
         return { score: tt.score, move: ttMove ?? undefined };

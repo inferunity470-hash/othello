@@ -143,6 +143,18 @@ export function BoardView({
   const [focus, setFocus] = useState<{ row: number; col: number } | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
 
+  // H2: Roving tabindex. Exactly one gridcell must be tabbable so the board is
+  // reachable even when there are no legal moves to highlight (readOnly,
+  // opponent's turn, etc.).
+  const firstLegal = useMemo<{ row: number; col: number } | null>(() => {
+    for (const key of moves) {
+      const [r, c] = key.split(',').map(Number);
+      return { row: r, col: c };
+    }
+    return null;
+  }, [moves]);
+  const active = focus ?? firstLegal ?? { row: 0, col: 0 };
+
   const handleCellHover = (r: number, c: number) => {
     const key = `${r},${c}`;
     const meta = heatmap?.get(key);
@@ -233,7 +245,7 @@ export function BoardView({
                 aria-label={cellLabel(r, c, cell)}
                 data-row={r}
                 data-col={c}
-                tabIndex={isLegal ? 0 : -1}
+                tabIndex={active.row === r && active.col === c ? 0 : -1}
                 onKeyDown={e => handleKeyDown(e, r, c)}
                 className={[
                   'cell',
