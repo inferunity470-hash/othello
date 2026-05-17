@@ -18,7 +18,9 @@ import { ResultCard } from './ResultCard';
 import { HelpOverlay } from './HelpOverlay';
 import { Tour, shouldShowTour } from './Tour';
 import { AILevel, decideBid, decideMove } from '../core/ai';
+import { determineWinner } from '../core/scoring';
 import { saveGame, loadGame, clearSave, getPref, setPref } from './storage';
+import { recordGame } from './stats';
 import { setEnabled as setSoundEnabled } from './sound';
 import { useI18n } from '../i18n';
 
@@ -316,15 +318,22 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
   const [hintBusy, setHintBusy] = useState(false);
   const [restored] = useState<boolean>(state.history.length > 0);
   const humanColor: Color = aiColor === 'BLACK' ? 'WHITE' : 'BLACK';
+  // Guard against recording the same finished game twice (StrictMode
+  // double effects, repeated state updates after ENDED).
+  const recordedRef = useRef<boolean>(false);
 
-  // Auto-save / clear on end
+  // Auto-save / clear on end + persist statistics once per game
   useEffect(() => {
     if (state.phase === 'ENDED') {
       clearSave(slot);
+      if (!recordedRef.current) {
+        recordedRef.current = true;
+        recordGame(state, determineWinner(state), humanColor);
+      }
     } else {
       saveGame(slot, state);
     }
-  }, [state, slot]);
+  }, [state, slot, humanColor]);
 
   // Clear hint whenever the state advances (it's stale).
   useEffect(() => {
@@ -488,6 +497,7 @@ function AIGame({ options, aiColor, level, onExit }: AIGameProps) {
                 clearSave(slot);
                 setState(initGame(options));
                 aiActedKeyRef.current = null;
+                recordedRef.current = false;
                 setShowHeatmap(false);
                 setHint(null);
               }}

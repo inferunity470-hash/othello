@@ -17,10 +17,10 @@ export function determineWinner(state: GameState): GameResult {
   }
   // stones tie -> chips
   if (finalChips.BLACK > finalChips.WHITE) {
-    return { winner: 'BLACK', stones, finalChips, endReason, tieBreaker: 'STONES' };
+    return { winner: 'BLACK', stones, finalChips, endReason, tieBreaker: 'CHIPS' };
   }
   if (finalChips.WHITE > finalChips.BLACK) {
-    return { winner: 'WHITE', stones, finalChips, endReason, tieBreaker: 'STONES' };
+    return { winner: 'WHITE', stones, finalChips, endReason, tieBreaker: 'CHIPS' };
   }
   return { winner: 'DRAW', stones, finalChips, endReason, tieBreaker: 'NONE' };
 }

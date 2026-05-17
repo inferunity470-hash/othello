@@ -1934,8 +1934,8 @@ label.stack {
 /* --- Toast queue --- */
 .toast-stack {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  right: calc(16px + env(safe-area-inset-right));
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

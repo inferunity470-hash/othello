@@ -31,8 +31,22 @@ jobs:
         run: npm run format:check
       - name: Unit + integration tests
         run: npm test
+      - name: Guard observability env vars (privacy)
+        # The app declares "no server communication" in PRIVACY.md.
+        # Block any CI build that would bake a non-empty error webhook
+        # URL into the production bundle.
+        run: |
+          if [ -n "${VITE_ERROR_WEBHOOK_URL:-}" ]; then
+            echo "::error::VITE_ERROR_WEBHOOK_URL must be empty in CI builds (privacy guarantee)."
+            exit 1
+          fi
       - name: Production build
         run: npm run build
+      - name: Verify build has no inlined webhook URL
+        # With VITE_ERROR_WEBHOOK_URL unset, Vite replaces the constant
+        # with `undefined`. If the WEBHOOK constant has a truthy string
+        # baked in, the privacy guarantee is broken.
+        run: node scripts/check-no-webhook.mjs
 
   e2e:
     runs-on: ubuntu-latest
