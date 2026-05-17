@@ -22,6 +22,7 @@ import { determineWinner } from '../core/scoring';
 import { saveGame, loadGame, clearSave, getPref, setPref } from './storage';
 import { recordGame } from './stats';
 import { setEnabled as setSoundEnabled } from './sound';
+import { SkipLink } from './SkipLink';
 import { useI18n } from '../i18n';
 
 /**
@@ -78,6 +79,7 @@ export function App() {
 
   return (
     <div className="app">
+      <SkipLink to="main-content" />
       <header className="top">
         <h1>
           <span className="accent">⚫⚪</span> ビッド式オセロ
@@ -128,17 +130,19 @@ export function App() {
           </button>
         </div>
       </header>
-      <div className="subtitle">着手権を秘密入札で取り合う、戦略的オセロ。</div>
-      <div style={{ height: '1rem' }} />
-      {mode.kind === 'lobby' && <Lobby onStart={setMode} />}
-      {mode.kind === 'vs-ai' && (
-        <AIGame
-          options={mode.options}
-          aiColor={mode.aiColor}
-          level={mode.level}
-          onExit={() => setMode({ kind: 'lobby' })}
-        />
-      )}
+      <main id="main-content" tabIndex={-1}>
+        <div className="subtitle">着手権を秘密入札で取り合う、戦略的オセロ。</div>
+        <div style={{ height: '1rem' }} />
+        {mode.kind === 'lobby' && <Lobby onStart={setMode} />}
+        {mode.kind === 'vs-ai' && (
+          <AIGame
+            options={mode.options}
+            aiColor={mode.aiColor}
+            level={mode.level}
+            onExit={() => setMode({ kind: 'lobby' })}
+          />
+        )}
+      </main>
       {help && <HelpOverlay onClose={() => setHelp(false)} />}
       {tour && <Tour onClose={() => setTour(false)} />}
     </div>

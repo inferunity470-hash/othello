@@ -6,6 +6,7 @@ import {
   resolvePendingBids,
 } from '../src/core/gameLoop';
 import { replayEvents, rewindTo } from '../src/core/events';
+import { exportGame, importGame } from '../src/core/serialize';
 import { legalMoves } from '../src/core/board';
 import { GameState } from '../src/core/types';
 
@@ -75,5 +76,41 @@ describe('event sourcing', () => {
     // Only T1 applied: BLACK -20, WHITE -10
     expect(afterT1.players.BLACK.chips).toBe(80);
     expect(afterT1.players.WHITE.chips).toBe(90);
+  });
+
+  // H7 regression: importGame(exportGame(s)) must preserve startedAt and the
+  // per-turn timestamps. replayEvents alone would regenerate them via
+  // Date.now().
+  it('importGame preserves startedAt across export/import', () => {
+    let s = initGame();
+    s = playOneTurn(s, 30, 20);
+    s = playOneTurn(s, 5, 50);
+    const doc = exportGame(s);
+    // Force a different "now" so any accidental regeneration would diverge.
+    const restored = importGame(doc);
+    expect(restored.startedAt).toBe(s.startedAt);
+  });
+
+  it('importGame preserves per-turn timestamps across export/import', () => {
+    let s = initGame();
+    s = playOneTurn(s, 30, 20);
+    s = playOneTurn(s, 5, 50);
+    const originalTimestamps = s.history.map(h => h.timestamp);
+    const restored = importGame(exportGame(s));
+    expect(restored.history.map(h => h.timestamp)).toEqual(originalTimestamps);
+  });
+
+  it('importGame preserves endedAt and endReason when present', () => {
+    const s = initGame();
+    const withEnd: GameState = {
+      ...s,
+      startedAt: 1_000_000,
+      endedAt: 1_999_999,
+      endReason: 'BOTH_NO_MOVES',
+    };
+    const restored = importGame(exportGame(withEnd));
+    expect(restored.startedAt).toBe(1_000_000);
+    expect(restored.endedAt).toBe(1_999_999);
+    expect(restored.endReason).toBe('BOTH_NO_MOVES');
   });
 });

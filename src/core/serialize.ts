@@ -41,8 +41,21 @@ export function importGame(json: string | object): GameState {
   if (!doc.options || !Array.isArray(doc.history)) {
     throw new Error('Malformed game document');
   }
-  // Replay history to reconstruct exact state
-  return replayEvents(doc.options, doc.history);
+  // Replay history to reconstruct exact state.
+  const s = replayEvents(doc.options, doc.history);
+  // H7: replayEvents reruns initGame() / applyPlacement, so it regenerates
+  // startedAt and each TurnRecord.timestamp from Date.now(). Restore the
+  // original metadata so export → import is fully reversible.
+  return {
+    ...s,
+    startedAt: doc.startedAt ?? s.startedAt,
+    endedAt: doc.endedAt ?? s.endedAt,
+    endReason: doc.endReason ?? s.endReason,
+    history: s.history.map((h, i) => {
+      const orig = doc.history[i];
+      return orig && orig.timestamp != null ? { ...h, timestamp: orig.timestamp } : h;
+    }),
+  };
 }
 
 export function downloadGameJson(

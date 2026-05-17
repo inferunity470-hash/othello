@@ -97,4 +97,33 @@ describe('strongSearch upgrades', () => {
     const b = createInitialBoard();
     expect(Math.abs(evaluateBoard(b, 'BLACK'))).toBeLessThan(1);
   });
+
+  // H9 regression: a root TT cut without a usable bestMove used to leave the
+  // caller (pickOniMove) without a move and fall back to pickGreedyMove. The
+  // root must always return a defined, legal move.
+  it('always returns a defined legal move at root even with TT pre-warmed', () => {
+    const b = createInitialBoard();
+    // First search warms the TT.
+    strongSearch(b, 'BLACK', { maxDepth: 4, exactEndgameEmpties: 0 });
+    // Second search at varying depths — root must still return a legal move.
+    for (const d of [1, 2, 3, 4, 6]) {
+      const r = strongSearch(b, 'BLACK', { maxDepth: d, exactEndgameEmpties: 0 });
+      expect(r.move).toBeDefined();
+      const moves = legalMoves(b, 'BLACK');
+      expect(moves.some(m => m.row === r.move!.row && m.col === r.move!.col)).toBe(true);
+    }
+  });
+
+  it('returns a legal move even on a tiny time budget (greedy fallback never needed)', () => {
+    const b = createInitialBoard();
+    strongSearch(b, 'BLACK', { maxDepth: 4, exactEndgameEmpties: 0 });
+    const r = strongSearch(b, 'BLACK', {
+      maxDepth: 8,
+      exactEndgameEmpties: 0,
+      timeBudgetMs: 1,
+    });
+    expect(r.move).toBeDefined();
+    const moves = legalMoves(b, 'BLACK');
+    expect(moves.some(m => m.row === r.move!.row && m.col === r.move!.col)).toBe(true);
+  });
 });
