@@ -32,6 +32,20 @@ export interface StrongSearchResult {
 const INF = 1e9;
 const MATE = 1e7;
 
+/**
+ * Feature flag: Late Move Pruning stage (Codex T13).
+ *   0 = disabled (default, v2.3 equivalent)
+ *   1 = Stage 1: only extreme late moves (i >= 15, very strict gates)
+ *   2 = Stage 2: relaxed (i >= 12) — requires Stage 1 A/B passing first
+ */
+function readLmpStage(): 0 | 1 | 2 {
+  const env =
+    typeof process !== 'undefined' && process.env ? process.env.ONI_LMP : undefined;
+  if (env === '1') return 1;
+  if (env === '2') return 2;
+  return 0;
+}
+
 interface KillerSet {
   // up to 2 killer moves per ply
   m: Array<{ row: number; col: number } | null>;
@@ -303,8 +317,58 @@ function pvs(
   let bestMove: { row: number; col: number } | undefined = undefined;
   let firstMove = true;
 
+  // LMP gate state. The cheap parts are evaluated up front; the expensive
+  // countEmpty(board) call is deferred until we actually need it (i.e. only
+  // when LMP could even fire for this node). This keeps the default-off path
+  // free of per-node overhead so v2.3 strength is preserved.
+  const lmpStage = readLmpStage();
+  const isPvNode = beta > alpha + 1;
+  const lmpEligibleByDepth =
+    lmpStage > 0 && depth === 1 && ply > 0 && !isPvNode;
+  const lmpEligibleNode =
+    lmpEligibleByDepth &&
+    countEmpty(board) >= (lmpStage === 1 ? 24 : 28);
+  const stage1IndexThreshold = 15;
+  const stage2IndexThreshold = 12;
+  const stage1MovesThreshold = 16;
+  const stage2MovesThreshold = 14;
+
   for (let i = 0; i < moves.length; i++) {
     const m = moves[i];
+
+    // Late Move Pruning (Codex T13 safe redo). Heavily gated:
+    // - feature flag enabled (default off)
+    // - depth = 1, not at root, non-PV null-window
+    // - empties >= 24 (Stage 1) or >= 28 (Stage 2) — never near exact endgame
+    // - already raised alpha (Stage 2 requires alpha >= origAlpha + 100)
+    // - moves[i] is not tactical (corner, TT, killer, big flip, low-mobility-after)
+    if (
+      lmpEligibleNode &&
+      !firstMove &&
+      bestMove !== undefined &&
+      alpha > origAlpha &&
+      (lmpStage === 1
+        ? i >= stage1IndexThreshold && moves.length >= stage1MovesThreshold
+        : i >= stage2IndexThreshold &&
+          moves.length >= stage2MovesThreshold &&
+          alpha >= origAlpha + 100)
+    ) {
+      const notTactical =
+        !isCorner(m.row, m.col) &&
+        !(ttMove && ttMove.row === m.row && ttMove.col === m.col) &&
+        !(
+          killerSet.m[0] &&
+          killerSet.m[0]!.row === m.row &&
+          killerSet.m[0]!.col === m.col
+        ) &&
+        !(
+          killerSet.m[1] &&
+          killerSet.m[1]!.row === m.row &&
+          killerSet.m[1]!.col === m.col
+        );
+      if (notTactical) continue;
+    }
+
     const { newBoard } = applyMove(board, color, m.row, m.col);
     let score: number;
 

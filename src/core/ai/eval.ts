@@ -388,6 +388,178 @@ function cornerAdjMultiplier(): number {
 }
 
 /**
+ * Edge pattern feature flag (Codex T12). Default 0 (disabled).
+ * Set ONI_EDGE_PATTERN=1 (full) or 0.5 (half) to enable.
+ */
+function edgePatternMultiplier(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  if (!proc || !proc.env) return 0;
+  const v = proc.env.ONI_EDGE_PATTERN as string | undefined;
+  if (v === undefined || v === '') return 0;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// 3^8 = 6561 edge patterns. Each edge (top, right, bottom, left) is read as
+// 8 cells; cells map to 0=BLACK, 1=WHITE, 2=EMPTY. Weights are written from
+// BLACK's POV — evaluateBoard negates for WHITE so f(B) === -f(W) is
+// preserved (required by aiEvalSymmetry.test.ts).
+const EDGE_PATTERN_WEIGHTS: number[] = buildEdgePatternWeights();
+
+function buildEdgePatternWeights(): number[] {
+  const table = new Array<number>(6561).fill(0);
+  for (let index = 0; index < 6561; index++) {
+    table[index] = scoreEdgePatternForBlack(decodeEdgePattern(index));
+  }
+  return table;
+}
+
+function decodeEdgePattern(index: number): number[] {
+  const cells = new Array<number>(8);
+  for (let i = 7; i >= 0; i--) {
+    cells[i] = index % 3;
+    index = (index / 3) | 0;
+  }
+  return cells;
+}
+
+function scoreEdgePatternForBlack(cells: number[]): number {
+  let s = 0;
+
+  // Corner anchors (overlap with cornerControl on purpose; weight kept small).
+  s += cornerCellValue(cells[0]);
+  s += cornerCellValue(cells[7]);
+
+  // C-squares adjacent to the corners.
+  s += cSquareValue(cells[1], cells[0]);
+  s += cSquareValue(cells[6], cells[7]);
+
+  // Anchored runs from each corner — proxy for edge stability.
+  s += anchoredRunValue(cells, 0, +1);
+  s += anchoredRunValue(cells, 7, -1);
+
+  // Edge stone balance (weak signal).
+  s += edgeStoneBalance(cells);
+
+  // Open early edges shouldn't dominate evaluation.
+  let empties = 0;
+  for (let i = 0; i < 8; i++) if (cells[i] === 2) empties++;
+  if (empties >= 5) s = (s * 0.5) | 0;
+
+  // Cap per-edge contribution. Sum over 4 edges is bounded roughly -48..+48.
+  if (s > 12) s = 12;
+  if (s < -12) s = -12;
+  return s;
+}
+
+function cornerCellValue(cell: number): number {
+  if (cell === 0) return 6; // BLACK
+  if (cell === 1) return -6; // WHITE
+  return 0;
+}
+
+function cSquareValue(c: number, corner: number): number {
+  if (c === 2) return 0;
+  const owner = c === 0 ? 1 : -1;
+  if (corner === 2) {
+    // Adjacent to an empty corner — dangerous for the owner.
+    return -owner * 3;
+  }
+  const cornerOwner = corner === 0 ? 1 : -1;
+  return owner === cornerOwner ? owner * 2 : owner * -2;
+}
+
+function anchoredRunValue(cells: number[], start: 0 | 7, step: 1 | -1): number {
+  const corner = cells[start];
+  if (corner === 2) return 0;
+  const owner = corner === 0 ? 1 : -1;
+  let run = 0;
+  for (let i = start; i >= 0 && i < 8; i += step) {
+    if (cells[i] !== corner) break;
+    run++;
+  }
+  return owner * Math.min(6, (run - 1) * 2);
+}
+
+function edgeStoneBalance(cells: number[]): number {
+  let black = 0;
+  let white = 0;
+  for (const c of cells) {
+    if (c === 0) black++;
+    else if (c === 1) white++;
+  }
+  return black - white;
+}
+
+function encodeEdge(cells: ReadonlyArray<number>): number {
+  let index = 0;
+  for (let i = 0; i < 8; i++) index = index * 3 + cells[i];
+  return index;
+}
+
+function cellCode(cell: 'BLACK' | 'WHITE' | null): number {
+  if (cell === 'BLACK') return 0;
+  if (cell === 'WHITE') return 1;
+  return 2;
+}
+
+/**
+ * Sum of edge-pattern weights across the four edges. Always written from
+ * BLACK's POV; the caller negates for WHITE so the negamax antisymmetry
+ * is automatically preserved.
+ */
+export function edgePatternScore(board: Board, color: Color): number {
+  const top = [
+    cellCode(board[0][0]),
+    cellCode(board[0][1]),
+    cellCode(board[0][2]),
+    cellCode(board[0][3]),
+    cellCode(board[0][4]),
+    cellCode(board[0][5]),
+    cellCode(board[0][6]),
+    cellCode(board[0][7]),
+  ];
+  const right = [
+    cellCode(board[0][7]),
+    cellCode(board[1][7]),
+    cellCode(board[2][7]),
+    cellCode(board[3][7]),
+    cellCode(board[4][7]),
+    cellCode(board[5][7]),
+    cellCode(board[6][7]),
+    cellCode(board[7][7]),
+  ];
+  const bottom = [
+    cellCode(board[7][7]),
+    cellCode(board[7][6]),
+    cellCode(board[7][5]),
+    cellCode(board[7][4]),
+    cellCode(board[7][3]),
+    cellCode(board[7][2]),
+    cellCode(board[7][1]),
+    cellCode(board[7][0]),
+  ];
+  const left = [
+    cellCode(board[7][0]),
+    cellCode(board[6][0]),
+    cellCode(board[5][0]),
+    cellCode(board[4][0]),
+    cellCode(board[3][0]),
+    cellCode(board[2][0]),
+    cellCode(board[1][0]),
+    cellCode(board[0][0]),
+  ];
+  const raw =
+    EDGE_PATTERN_WEIGHTS[encodeEdge(top)] +
+    EDGE_PATTERN_WEIGHTS[encodeEdge(right)] +
+    EDGE_PATTERN_WEIGHTS[encodeEdge(bottom)] +
+    EDGE_PATTERN_WEIGHTS[encodeEdge(left)];
+  if (raw === 0) return 0; // avoid -0 from the BLACK→WHITE negation
+  return color === 'BLACK' ? raw : -raw;
+}
+
+/**
  * Phase-aware evaluator. Negamax-friendly: result for `color` always equals
  * the negation of the result for `opponentOf(color)` (within fp rounding).
  */
@@ -405,6 +577,10 @@ export function evaluateBoard(board: Board, color: Color): number {
     return (mine - theirs) * 1000;
   }
   const adjMul = cornerAdjMultiplier();
+  const edgeMul = edgePatternMultiplier();
+  const edgeOpening = edgeMul === 0 ? 0 : edgePatternScore(board, color) * 0.35 * edgeMul;
+  const edgeMid = edgeMul === 0 ? 0 : edgePatternScore(board, color) * 0.6 * edgeMul;
+  const edgeEnd = edgeMul === 0 ? 0 : edgePatternScore(board, color) * 0.25 * edgeMul;
   // cornerAdjacentScore is theoretically sound (corrects positionalScore's
   // static X/C penalty when the adjacent corner is owned) but empirical
   // A/B testing on offline-launch did NOT find a strength improvement
@@ -423,6 +599,7 @@ export function evaluateBoard(board: Board, color: Color): number {
       positionalScore(board, color) * 1.0 +
       mobilityScore(board, color) * 6.0 +
       cornerControl(board, color) * 14.0 +
+      edgeOpening +
       cornerAdjacentScore(board, color) * 1.5 * adjMul +
       frontierScore(board, color) * 2.0 +
       stableDiscScore(board, color) * 4.0 +
@@ -434,6 +611,7 @@ export function evaluateBoard(board: Board, color: Color): number {
       positionalScore(board, color) * 1.0 +
       mobilityScore(board, color) * 5.0 +
       cornerControl(board, color) * 16.0 +
+      edgeMid +
       cornerAdjacentScore(board, color) * 2.0 * adjMul +
       frontierScore(board, color) * 2.5 +
       stableDiscScore(board, color) * 8.0 +
@@ -445,6 +623,7 @@ export function evaluateBoard(board: Board, color: Color): number {
     positionalScore(board, color) * 0.4 +
     mobilityScore(board, color) * 1.0 +
     cornerControl(board, color) * 10.0 +
+    edgeEnd +
     cornerAdjacentScore(board, color) * 0.8 * adjMul +
     stableDiscScore(board, color) * 12.0 +
     potentialMobilityScore(board, color) * 0.5 +
