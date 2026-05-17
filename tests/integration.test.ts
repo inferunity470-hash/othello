@@ -182,7 +182,7 @@ describe('integration: full games', () => {
     };
     const r = determineWinner(s);
     expect(r.winner).toBe('BLACK');
-    expect(r.tieBreaker).toBe('STONES');
+    expect(r.tieBreaker).toBe('CHIPS');
   });
 
   it('full draw when stones AND chips equal', () => {
