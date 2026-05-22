@@ -380,53 +380,101 @@ function allPayBid(
  * a fraction of their stack per turn. Falls back to oppChips when too
  * few past bids exist to be confident.
  */
+type OppBidStrategy = 'aggressive' | 'conservative' | 'panic';
+
+function recentOpponentBids(state: GameState, oppColor: Color, n = 10): number[] {
+  return state.history
+    .filter(t => t.bids != null)
+    .slice(-n)
+    .map(t => ((t.bids![oppColor] as number) ?? 0));
+}
+
+function percentile(xs: number[], p: number): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const i = Math.min(s.length - 1, Math.floor((s.length - 1) * p));
+  return s[i];
+}
+
+/**
+ * Classify the opponent's recent bidding style. Drives the realistic
+ * max-bid estimate and the oni's chip-conservation choices in decideBid.
+ * See codex-review-T15-general-strategy-detection.md for the full
+ * derivation; in short:
+ *   - aggressive: standard play, no detectable pattern
+ *   - conservative: 0 連投 (T14), 50/0/50/0 交互 (T15), or any sparse-spend
+ *     pattern where the opponent saves chips for the tieBreaker
+ *   - panic: 20/40/60/80 escalation, all-in pressure, or a recent spike
+ */
+function detectOpponentBidStrategy(
+  state: GameState,
+  oppColor: Color,
+  oppChips: number
+): OppBidStrategy {
+  const bids = recentOpponentBids(state, oppColor, 10);
+  if (bids.length < 3) return 'aggressive';
+
+  const median = percentile(bids, 0.5);
+  const avg = bids.reduce((a, b) => a + b, 0) / bids.length;
+  const zeroRate = bids.filter(b => b === 0).length / bids.length;
+  const maxBid = Math.max(...bids);
+  const last = bids[bids.length - 1];
+
+  const lowMedian = median <= oppChips * 0.05;
+  const variance =
+    bids.reduce((a, b) => a + (b - avg) ** 2, 0) / bids.length;
+  const highVariance = variance > avg * avg;
+
+  // Rising pattern (escalation): must be checked before "conservative" so
+  // that 0/20/40/60/80 stays in panic and not in conservative. Guard
+  // against oppChips=0 so that "0 >= 0*0.5" doesn't trigger a false panic.
+  const rising =
+    bids.length >= 4 &&
+    bids.slice(-4).every((b, i, a) => i === 0 || b > a[i - 1]);
+  if (
+    rising ||
+    (oppChips > 0 && last >= oppChips * 0.5) ||
+    (oppChips > 0 && maxBid >= oppChips * 0.4 && median >= oppChips * 0.15)
+  ) {
+    return 'panic';
+  }
+
+  // T14 (0/0/0/0/0), T15 (50/0/50/0/50), and any future sparse-spend pattern.
+  if (
+    zeroRate >= 0.5 ||
+    (zeroRate >= 0.4 && highVariance) ||
+    lowMedian
+  ) {
+    return 'conservative';
+  }
+
+  return 'aggressive';
+}
+
 function estimateOppMaxBid(
   state: GameState,
   oppColor: Color,
   oppChips: number
 ): number {
-  const past = state.history.filter(t => t.bids != null).slice(-10);
-  if (past.length === 0) return oppChips;
-  let maxBid = 0;
-  let total = 0;
-  let zeroCount = 0;
-  for (const t of past) {
-    const b = (t.bids![oppColor] as number) ?? 0;
-    if (b > maxBid) maxBid = b;
-    if (b === 0) zeroCount++;
-    total += b;
-  }
-  // Zero-bid exploit guard: when the opponent has consistently bid 0 in
-  // the recent window, their realistic max bid for the next turn is 0/1,
-  // not 25% of their stack. Without this guard the oni keeps paying
-  // chips* 0.05 against zero-bid responses and loses on the chip
-  // tieBreaker (scoring.ts: 'CHIPS'). See codex-review-T14.
-  if (past.length >= 3 && zeroCount === past.length) {
-    return 1;
-  }
-  const avg = total / past.length;
-  // Allow for escalation: 2x recent max OR 4x average OR 25% of stack,
-  // whichever is largest. Always upper-bounded by actual oppChips. The
-  // 2x multiplier covers the "escalation" pattern (e.g. 20→40→60→80) so
-  // we don't underbid when the opponent ramps each turn.
-  const estimate = Math.max(maxBid * 2, avg * 4, oppChips * 0.25);
-  return Math.min(oppChips, Math.ceil(estimate));
-}
+  const bids = recentOpponentBids(state, oppColor, 10);
+  if (bids.length === 0) return oppChips;
+  const median = percentile(bids, 0.5);
+  const p75 = percentile(bids, 0.75);
+  const maxBid = Math.max(...bids);
+  const strategy = detectOpponentBidStrategy(state, oppColor, oppChips);
 
-/**
- * Detect the "zero-bid drain" exploit: opponent has bid 0 in every recent
- * round (at least N samples). When this is true, the chip-tieBreaker
- * threatens to flip a 32-32 stone tie into a loss for the oni, so it
- * should match the opponent at 0/1 instead of paying baseBid * chips * 5%.
- */
-function detectOpponentZeroBidAbuse(state: GameState, oppColor: Color): boolean {
-  const past = state.history.filter(t => t.bids != null).slice(-5);
-  if (past.length < 3) return false;
-  for (const t of past) {
-    const b = (t.bids![oppColor] as number) ?? 0;
-    if (b !== 0) return false;
+  let estimate: number;
+  if (strategy === 'conservative') {
+    // 50/0/50/0/50 → median 50, p75 50. We do NOT want to chase a 100;
+    // the opponent only matches 50% of the time. Anchor low.
+    estimate = Math.max(median * 2, p75 * 1.25, oppChips * 0.05);
+  } else if (strategy === 'panic') {
+    // Escalation / all-in pressure: prepare for the next spike.
+    estimate = Math.max(maxBid * 1.25, p75 * 2, oppChips * 0.35);
+  } else {
+    estimate = Math.max(median * 2, p75 * 1.5, oppChips * 0.15);
   }
-  return true;
+  return Math.min(oppChips, Math.ceil(estimate));
 }
 
 /**
@@ -658,12 +706,19 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   );
   if (defenseBid > 0) bid = Math.max(bid, defenseBid);
 
-  // Zero-bid drain counter (codex-review-T14): when the human consistently
-  // bids 0 to abuse the chip tieBreaker, match them at 0 (holder) or 1
-  // (non-holder). The defenseBid floor still kicks in for genuinely
-  // critical positions, so this only suppresses the wasteful baseBid
-  // chunk in non-tactical sparse opening/midgame moves.
-  if (detectOpponentZeroBidAbuse(state, opponentOf(color))) {
+  // Chip-conservation counter (codex-review-T15, supersedes T14):
+  // classify the opponent's bidding style and drop our own bid to the
+  // minimum when they are a conservative chip-saver (covers 0連投,
+  // 50/0/50/0, and any future sparse-spend pattern). The defenseBid
+  // floor still protects critical tactical positions; in genuinely
+  // critical spots the oni will spend, in non-critical spots it will
+  // stop bleeding chips on hollow auctions.
+  const oppStrategy = detectOpponentBidStrategy(
+    state,
+    opponentOf(color),
+    oppChips
+  );
+  if (oppStrategy === 'conservative') {
     const minCounter = isHolder ? 0 : 1;
     bid = Math.max(minCounter, defenseBid);
   }

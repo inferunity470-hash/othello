@@ -211,6 +211,77 @@ describe('T14: zero-bid drain counter (chip tieBreaker exploit)', () => {
   });
 });
 
+// T15 regression: the "alternating high/zero" exploit. T14 only caught
+// 0/0/0/0/0. An attacker can instead bid 50/0/50/0/50 (half-stack every
+// other turn) and still drain the oni's chips while keeping enough of
+// their own for the chip tieBreaker. The fix moves estimateOppMaxBid
+// from a max/avg-driven model to a strategy-classified, median-anchored
+// one. See codex-review-T15-general-strategy-detection.md.
+describe('T15: alternating high/zero bid exploit', () => {
+  function playOneTurnWithBids(
+    s: GameState,
+    blackBid: number,
+    whiteBid: number,
+    rng: () => number
+  ): GameState {
+    if (s.phase !== 'BIDDING') return s;
+    s = setPendingBid(s, 'BLACK', blackBid);
+    s = setPendingBid(s, 'WHITE', whiteBid);
+    s = resolvePendingBids(s).state;
+    while (
+      s.phase === 'PLACING' ||
+      s.phase === 'FREE_MOVE' ||
+      s.phase === 'FINAL_MOVE'
+    ) {
+      const mover = expectedMover(s);
+      if (!mover) break;
+      const moves = legalMoves(s.board, mover);
+      if (moves.length === 0) break;
+      const m = decideMove(s, mover, 'beginner', rng);
+      s = applyPlacement(s, mover, m.row, m.col);
+    }
+    return s;
+  }
+
+  it('oni bid drops after seeing the 50/0/50/0/50 alternating pattern', () => {
+    const rng = makeRng(13);
+    let s: GameState = initGame({ initialChips: 200, auctionType: 'all-pay' });
+    // BLACK plays the exploit at half-stack (relative to 200 initial chips):
+    // 100, 0, 100, 0, 100 — the "50/50 alternating" pattern scaled to 200.
+    // initialChips=100 would cause EXCEEDS_CHIPS once cumulative spend
+    // passes 100, so we use 200 to make a clean 5-round demonstration.
+    const blackBids = [100, 0, 100, 0, 100];
+    for (const bb of blackBids) {
+      if (s.phase !== 'BIDDING') break;
+      const blackChips = s.players.BLACK.chips;
+      const wb = decideBid({ state: s, color: 'WHITE', level: 'oni' }, rng);
+      s = playOneTurnWithBids(s, Math.min(bb, blackChips), wb, rng);
+    }
+    if (s.phase !== 'BIDDING') return;
+    const oniBid = decideBid({ state: s, color: 'WHITE', level: 'oni' }, rng);
+    // After 5 turns of 50/0/50/0/50, the conservative classifier should fire
+    // (zeroRate >= 0.4 + highVariance) and clamp the oni's bid to 0/1
+    // unless defenseBid is critical. On this neutral opening it isn't.
+    expect(oniBid).toBeLessThanOrEqual(2);
+  });
+
+  it('classic 20/40/60/80 escalation is NOT treated as conservative', () => {
+    const rng = makeRng(17);
+    let s: GameState = initGame({ initialChips: 400, auctionType: 'all-pay' });
+    const blackBids = [20, 40, 60, 80];
+    for (const bb of blackBids) {
+      if (s.phase !== 'BIDDING') break;
+      const blackChips = s.players.BLACK.chips;
+      const wb = decideBid({ state: s, color: 'WHITE', level: 'oni' }, rng);
+      s = playOneTurnWithBids(s, Math.min(bb, blackChips), wb, rng);
+    }
+    if (s.phase !== 'BIDDING') return;
+    // panic-classified opponent → oni must NOT be clamped to 1.
+    const oniBid = decideBid({ state: s, color: 'WHITE', level: 'oni' }, rng);
+    expect(oniBid).toBeGreaterThan(2);
+  });
+});
+
 // H10 regression: deltaValueOfMoving used to pass the same time budget to two
 // sequential strongSearch calls. If the first burned the budget, the second
 // returned a partial / depth-0 score and delta became meaningless. The new
