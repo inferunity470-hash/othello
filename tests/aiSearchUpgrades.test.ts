@@ -10,7 +10,7 @@ import { strongSearch } from '../src/core/ai/search';
 import { evaluateBoard } from '../src/core/ai/eval';
 import { ttClear } from '../src/core/ai/tt';
 import { Board, Color } from '../src/core/types';
-import { createInitialBoard, applyMove, legalMoves } from '../src/core/board';
+import { createInitialBoard, legalMoves } from '../src/core/board';
 
 function emptyBoard(): Board {
   return Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => null));
@@ -126,4 +126,122 @@ describe('strongSearch upgrades', () => {
     const moves = legalMoves(b, 'BLACK');
     expect(moves.some(m => m.row === r.move!.row && m.col === r.move!.col)).toBe(true);
   });
+});
+
+/**
+ * v2.5 search-strength feature flags (Codex T16):
+ *  - A4 Countermove heuristic (ONI_COUNTERMOVE, default on)
+ *  - B3 Futility pruning      (ONI_FUTILITY, default off)
+ *  - B5 Singular extension    (ONI_SINGULAR, default off)
+ */
+describe('v2.5 search-strength flags (Codex T16)', () => {
+  function withEnv(key: string, value: string | undefined, fn: () => void) {
+    const prev = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+    try {
+      fn();
+    } finally {
+      if (prev === undefined) delete process.env[key];
+      else process.env[key] = prev;
+    }
+  }
+
+  function isLegal(b: Board, color: Color, m?: { row: number; col: number }) {
+    if (!m) return false;
+    return legalMoves(b, color).some(x => x.row === m.row && x.col === m.col);
+  }
+
+  it('A4: countermove on — repeated search is deterministic', () => {
+    // Mirrors the "aspiration determinism" test above: no ttClear between the
+    // two calls, so the warm TT lets the second search reproduce the first.
+    withEnv('ONI_COUNTERMOVE', '1', () => {
+      const b = createInitialBoard();
+      const r1 = strongSearch(b, 'BLACK', { maxDepth: 6, exactEndgameEmpties: 0 });
+      const r2 = strongSearch(b, 'BLACK', { maxDepth: 6, exactEndgameEmpties: 0 });
+      expect(r2.score).toBe(r1.score);
+      expect(r2.move).toEqual(r1.move);
+    });
+  });
+
+  it('A4: countermove off still returns a legal root move', () => {
+    withEnv('ONI_COUNTERMOVE', '0', () => {
+      const b = createInitialBoard();
+      const r = strongSearch(b, 'BLACK', { maxDepth: 6, exactEndgameEmpties: 0 });
+      expect(isLegal(b, 'BLACK', r.move)).toBe(true);
+    });
+  });
+
+  it('B3: futility on — repeated search is deterministic and legal', () => {
+    withEnv('ONI_FUTILITY', '1', () => {
+      const b = createInitialBoard();
+      const r1 = strongSearch(b, 'BLACK', { maxDepth: 6, exactEndgameEmpties: 0 });
+      const r2 = strongSearch(b, 'BLACK', { maxDepth: 6, exactEndgameEmpties: 0 });
+      expect(r2.score).toBe(r1.score);
+      expect(r2.move).toEqual(r1.move);
+      expect(isLegal(b, 'BLACK', r1.move)).toBe(true);
+    });
+  });
+
+  it('B3: futility does not change the exact-endgame score', () => {
+    // The exact-endgame solver is reached via strongSearch before pvs(), so
+    // futility must never touch it. Confirm on/off agree on a small endgame.
+    const b = emptyBoard();
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 8; c++) b[r][c] = (r + c) % 2 === 0 ? 'BLACK' : 'WHITE';
+    }
+    for (let c = 0; c < 8; c++) b[6][c] = c % 2 === 0 ? 'BLACK' : 'WHITE';
+    b[7][0] = 'BLACK';
+    b[7][7] = 'WHITE';
+    const empties = b.flat().filter(c => c === null).length;
+    let scoreOff = 0;
+    withEnv('ONI_FUTILITY', '0', () => {
+      ttClear();
+      scoreOff = strongSearch(b, 'BLACK', {
+        maxDepth: empties,
+        exactEndgameEmpties: empties,
+      }).score;
+    });
+    withEnv('ONI_FUTILITY', '1', () => {
+      ttClear();
+      const scoreOn = strongSearch(b, 'BLACK', {
+        maxDepth: empties,
+        exactEndgameEmpties: empties,
+      }).score;
+      expect(scoreOn).toBe(scoreOff);
+    });
+  });
+
+  it('B5: singular extension respects a tiny time budget and stays legal', () => {
+    withEnv('ONI_SINGULAR', '1', () => {
+      const b = createInitialBoard();
+      ttClear();
+      const t0 = Date.now();
+      const r = strongSearch(b, 'BLACK', {
+        maxDepth: 12,
+        exactEndgameEmpties: 0,
+        timeBudgetMs: 50,
+      });
+      expect(Date.now() - t0).toBeLessThan(2000);
+      expect(isLegal(b, 'BLACK', r.move)).toBe(true);
+    });
+  });
+
+  it('B5: singular extension — repeated search is deterministic', () => {
+    // Singular fires only at depth >= 8 (so maxDepth >= 8). With NO time
+    // budget the wall-clock guard is inert, so the search is deterministic;
+    // a 16-empty board keeps every line — extensions included — bounded.
+    withEnv('ONI_SINGULAR', '1', () => {
+      const b = emptyBoard();
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 8; c++) b[r][c] = (r + c) % 2 === 0 ? 'BLACK' : 'WHITE';
+      }
+      // Row 5 breaks the checkerboard so the row-5/6 frontier has legal moves.
+      for (let c = 0; c < 8; c++) b[5][c] = c % 2 === 0 ? 'BLACK' : 'WHITE';
+      const r1 = strongSearch(b, 'BLACK', { maxDepth: 12, exactEndgameEmpties: 0 });
+      const r2 = strongSearch(b, 'BLACK', { maxDepth: 12, exactEndgameEmpties: 0 });
+      expect(r2.score).toBe(r1.score);
+      expect(r2.move).toEqual(r1.move);
+    });
+  }, 60_000);
 });
