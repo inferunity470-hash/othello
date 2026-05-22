@@ -34,12 +34,11 @@ beforeEach(() => {
 });
 
 describe('UI smoke (jsdom)', () => {
-  it('App renders the lobby without crashing', () => {
+  it('App renders the NPC lobby without crashing', () => {
     const { unmount, getByText } = render(<App />);
     expect(getByText(/ビッド式オセロ/)).toBeTruthy();
-    expect(getByText(/同機ホットシート/)).toBeTruthy();
-    expect(getByText(/NPC 対戦/)).toBeTruthy();
-    expect(getByText(/友達とオンライン/)).toBeTruthy();
+    expect(getByText(/NPC と対局/)).toBeTruthy();
+    expect(getByText(/対局開始/)).toBeTruthy();
     unmount();
   });
 
@@ -131,35 +130,9 @@ describe('UI smoke (jsdom)', () => {
     unmount();
   });
 
-  it('App can switch tabs in lobby without errors', () => {
-    const { getAllByText, getByText, unmount } = render(<App />);
-    // Click the NPC tab (button) — there might be multiple text matches in muted help, so pick the first.
-    fireEvent.click(getAllByText(/NPC 対戦/)[0]);
-    expect(getByText(/難易度/)).toBeTruthy();
-    fireEvent.click(getAllByText(/友達とオンライン/)[0]);
-    fireEvent.click(getAllByText(/同機ホットシート/)[0]);
-    unmount();
-  });
-
-  it('Help overlay can be opened from header', () => {
-    const { getByText, unmount } = render(<App />);
-    fireEvent.click(getByText(/ルール/));
-    expect(getByText(/基本/)).toBeTruthy();
-    unmount();
-  });
-
-  it('Hotseat mode: clicking 対局開始 starts a game with bidding', () => {
-    const { getByText, queryByText, unmount } = render(<App />);
-    fireEvent.click(getByText(/対局開始/));
-    // A handoff overlay should appear
-    expect(queryByText(/黒 の番です/)).toBeTruthy();
-    unmount();
-  });
-
-  it('AI tab: shows level options including 鬼', () => {
+  it('Lobby shows level options including 鬼', () => {
     const { getByText, getByDisplayValue, unmount } = render(<App />);
-    fireEvent.click(getByText(/NPC 対戦/));
-    // Level select default = intermediate
+    expect(getByText(/難易度/)).toBeTruthy();
     expect(getByDisplayValue(/中級/)).toBeTruthy();
     // Confirm 'oni' option exists
     expect(getByText(/鬼 ― 終盤完全解析/)).toBeTruthy();

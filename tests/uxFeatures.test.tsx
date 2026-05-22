@@ -156,8 +156,8 @@ describe('App: hint button in vs-AI', () => {
     if (queryByText(/STEP 1 \/ 3/)) {
       fireEvent.click(getByText(/スキップ/));
     }
-    fireEvent.click(getByText(/NPC 対戦/));
-    fireEvent.click(getByText(/▶ NPC と対局/));
+    // Lobby is NPC-only now — start the game directly.
+    fireEvent.click(getByText(/▶ 対局開始/));
     // Initially BIDDING phase, no hint button yet (it's a place-time button).
     expect(queryByText(/💡 ヒント/)).toBeNull();
   });
@@ -170,7 +170,6 @@ describe('Board file/rank labels', () => {
       fireEvent.click(getByText(/スキップ/));
     }
     fireEvent.click(getByText(/▶ 対局開始/));
-    fireEvent.click(getByText('確認'));
     const files = container.querySelector('.board-files');
     const ranks = container.querySelector('.board-ranks');
     expect(files?.textContent).toBe('ABCDEFGH');

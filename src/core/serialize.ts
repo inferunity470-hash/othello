@@ -73,15 +73,24 @@ export function encodeGameForUrl(state: GameState): string {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
   }
-  return Buffer.from(text, 'utf-8').toString('base64url');
+  // Node fallback (used only in tests / non-browser tooling).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buf = (globalThis as any).Buffer;
+  if (buf) return buf.from(text, 'utf-8').toString('base64url');
+  throw new Error('No base64 encoder available');
 }
 
 export function decodeGameFromUrl(s: string): GameState {
   const padded = s.replace(/-/g, '+').replace(/_/g, '/');
-  const text =
-    typeof atob !== 'undefined'
-      ? decodeURIComponent(escape(atob(padded)))
-      : Buffer.from(s, 'base64url').toString('utf-8');
+  let text: string;
+  if (typeof atob !== 'undefined') {
+    text = decodeURIComponent(escape(atob(padded)));
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const buf = (globalThis as any).Buffer;
+    if (!buf) throw new Error('No base64 decoder available');
+    text = buf.from(s, 'base64url').toString('utf-8');
+  }
   return importGame(text);
 }
 
