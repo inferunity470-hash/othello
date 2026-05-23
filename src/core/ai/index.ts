@@ -118,7 +118,8 @@ function deltaValueOfMoving(
   color: Color,
   depth: number,
   useStrong = false,
-  timeBudgetMs?: number
+  timeBudgetMs?: number,
+  exactEndgameEmpties = 0
 ): { delta: number; myBest: number; oppBest: number } {
   const opp = opponentOf(color);
   let myScore: number;
@@ -130,14 +131,17 @@ function deltaValueOfMoving(
     // meaningful instead of returning arbitrary partial scores.
     const half =
       timeBudgetMs == null ? undefined : Math.max(1, Math.floor(timeBudgetMs / 2));
+    // Codex T17 P1: the bid forecast can solve the endgame exactly, just like
+    // the move search does — `exactEndgameEmpties` (default 0 = legacy) is the
+    // empties threshold below which strongSearch runs the exact solver.
     const me = strongSearch(state.board, color, {
       maxDepth: depth,
-      exactEndgameEmpties: 0,
+      exactEndgameEmpties,
       timeBudgetMs: half,
     });
     const them = strongSearch(state.board, opp, {
       maxDepth: depth,
-      exactEndgameEmpties: 0,
+      exactEndgameEmpties,
       timeBudgetMs: half,
     });
     if (me.depthReached === 0 || them.depthReached === 0) {
@@ -282,6 +286,9 @@ function pickOniMove(state: GameState, mover: Color): { row: number; col: number
     exactEndgameEmpties = 0;
     timeBudgetMs = 1400;
   }
+  // Global time-budget scale (ONI_TIME_SCALE) — used to run fast self-play
+  // for A/B screening. Default 1.0 leaves the budgets above unchanged.
+  timeBudgetMs = Math.max(50, Math.round(timeBudgetMs * readTimeScale()));
   const r = strongSearch(state.board, mover, {
     maxDepth,
     exactEndgameEmpties,
@@ -606,7 +613,16 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   // bumped +1 in v2.2 (NPC-mode final strengthening): 11/10/9 from 10/9/8,
   // time budget 900ms from 700ms.
   const depth = empties <= 14 ? 11 : empties <= 22 ? 10 : 9;
-  const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true, 900);
+  // Codex T17 P1: bid forecast can solve the endgame exactly (ONI_BID_EXACT)
+  // and use a tunable budget (ONI_BID_BUDGET). Defaults preserve legacy.
+  const { delta, oppBest } = deltaValueOfMoving(
+    state,
+    color,
+    depth,
+    true,
+    readBidBudget(),
+    readBidExactEmpties()
+  );
   // ONI_BID_V2 selects between two bidding regimes for A/B testing:
   //   v2 (default): holder/non-holder asymmetric base + symmetric token cost
   //                 + relaxed endgame cap
@@ -752,6 +768,52 @@ function oniBidV2(): boolean {
   const v = proc.env.ONI_BID_V2 as string | undefined;
   if (v === undefined || v === '') return true;
   return v !== '0' && v !== 'false' && v.toLowerCase() !== 'no';
+}
+
+/**
+ * Codex T17 P1: empties threshold below which the oni's bid forecast solves
+ * the endgame exactly (passed as `exactEndgameEmpties` to strongSearch).
+ * 0 = legacy (approximate forecast even in the endgame). Tunable via
+ * ONI_BID_EXACT for A/B grid search.
+ */
+function readBidExactEmpties(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.ONI_BID_EXACT as string | undefined;
+  if (v == null || v === '') return 0;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Global multiplier on every oni time budget (move search + bid forecast).
+ * Default 1.0. Set ONI_TIME_SCALE=0.25 etc. to run much faster self-play
+ * games for A/B screening (confirm winners at full time afterwards).
+ */
+function readTimeScale(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.ONI_TIME_SCALE as string | undefined;
+  if (v == null || v === '') return 1;
+  const n = parseFloat(v);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/**
+ * Time budget (ms) for the oni's bid forecast (split across the two
+ * strongSearch calls in deltaValueOfMoving). Default 900, scaled by
+ * ONI_TIME_SCALE. Tunable via ONI_BID_BUDGET for A/B grid search.
+ */
+function readBidBudget(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.ONI_BID_BUDGET as string | undefined;
+  let budget = 900;
+  if (v != null && v !== '') {
+    const n = parseInt(v, 10);
+    if (Number.isFinite(n) && n > 0) budget = n;
+  }
+  return Math.max(50, Math.round(budget * readTimeScale()));
 }
 
 export function decideMove(
