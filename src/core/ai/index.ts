@@ -29,7 +29,24 @@ export interface AIBidContext {
  * chips=100, suggesting the token's marginal value is small for typical
  * game lengths.)
  */
-const TOKEN_COST = 6;
+function readBidEnvNum(name: string, dflt: number): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.[name] as string | undefined;
+  if (v == null || v === '') return dflt;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : dflt;
+}
+
+// Codex T17 bid curve infrastructure (default = v2.4 legacy values).
+// Module-load constants — set env at process launch for A/B grid search:
+//   ONI_TOKEN_COST=10 ONI_BID_SCALE=1000 npx tsx ...
+const TOKEN_COST = readBidEnvNum('ONI_TOKEN_COST', 6);
+const BID_SCALE = readBidEnvNum('ONI_BID_SCALE', 800);
+const BID_CAP = readBidEnvNum('ONI_BID_CAP', 0.85);
+const BID_FIRST_SHADE = readBidEnvNum('ONI_BID_FIRST_SHADE', 0.6);
+const BID_VICKREY_SHADE = readBidEnvNum('ONI_BID_VICKREY_SHADE', 0.92);
+const BID_ALLPAY_SHADE = readBidEnvNum('ONI_BID_ALLPAY_SHADE', 0.85);
 
 /**
  * Feature flag: Fear Factor (Codex T11). When the opponent suddenly bids
@@ -118,7 +135,8 @@ function deltaValueOfMoving(
   color: Color,
   depth: number,
   useStrong = false,
-  timeBudgetMs?: number
+  timeBudgetMs?: number,
+  exactEndgameEmpties = 0
 ): { delta: number; myBest: number; oppBest: number } {
   const opp = opponentOf(color);
   let myScore: number;
@@ -130,14 +148,17 @@ function deltaValueOfMoving(
     // meaningful instead of returning arbitrary partial scores.
     const half =
       timeBudgetMs == null ? undefined : Math.max(1, Math.floor(timeBudgetMs / 2));
+    // Codex T17 P1: the bid forecast can solve the endgame exactly, just like
+    // the move search does — `exactEndgameEmpties` (default 0 = legacy) is the
+    // empties threshold below which strongSearch runs the exact solver.
     const me = strongSearch(state.board, color, {
       maxDepth: depth,
-      exactEndgameEmpties: 0,
+      exactEndgameEmpties,
       timeBudgetMs: half,
     });
     const them = strongSearch(state.board, opp, {
       maxDepth: depth,
-      exactEndgameEmpties: 0,
+      exactEndgameEmpties,
       timeBudgetMs: half,
     });
     if (me.depthReached === 0 || them.depthReached === 0) {
@@ -265,23 +286,28 @@ function pickOniMove(state: GameState, mover: Color): { row: number; col: number
   let maxDepth: number;
   let exactEndgameEmpties: number;
   let timeBudgetMs: number | undefined;
+  // Codex T17 P3+: per-phase budget / depth / exact-endgame thresholds are
+  // env-configurable for time-budget A/B grid search (defaults = v2.4 values).
   if (empties <= 10) {
-    maxDepth = 22;
+    maxDepth = readBidEnvNum('ONI_DEPTH_LE10', 22);
     exactEndgameEmpties = empties;
-    timeBudgetMs = 4500;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_LE10', 4500);
   } else if (empties <= 18) {
-    maxDepth = 20;
+    maxDepth = readBidEnvNum('ONI_DEPTH_LE18', 20);
     exactEndgameEmpties = empties;
-    timeBudgetMs = 3500;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_LE18', 3500);
   } else if (empties <= 22) {
-    maxDepth = 14;
+    maxDepth = readBidEnvNum('ONI_DEPTH_LE22', 14);
     exactEndgameEmpties = 0;
-    timeBudgetMs = 2200;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_LE22', 2200);
   } else {
-    maxDepth = 11;
+    maxDepth = readBidEnvNum('ONI_DEPTH_DEFAULT', 11);
     exactEndgameEmpties = 0;
-    timeBudgetMs = 1400;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_DEFAULT', 1400);
   }
+  // Global time-budget scale (ONI_TIME_SCALE) — used to run fast self-play
+  // for A/B screening. Default 1.0 leaves the budgets above unchanged.
+  timeBudgetMs = Math.max(50, Math.round(timeBudgetMs * readTimeScale()));
   const r = strongSearch(state.board, mover, {
     maxDepth,
     exactEndgameEmpties,
@@ -324,8 +350,8 @@ function countEmpty(board: import('../types').Board): number {
  */
 function evalPointsToChips(value: number, chips: number): number {
   if (value <= 0) return 0;
-  const decisiveCap = chips * 0.85;
-  return decisiveCap * (1 - Math.exp(-value / 800));
+  const decisiveCap = chips * BID_CAP;
+  return decisiveCap * (1 - Math.exp(-value / BID_SCALE));
 }
 
 /**
@@ -380,53 +406,101 @@ function allPayBid(
  * a fraction of their stack per turn. Falls back to oppChips when too
  * few past bids exist to be confident.
  */
+type OppBidStrategy = 'aggressive' | 'conservative' | 'panic';
+
+function recentOpponentBids(state: GameState, oppColor: Color, n = 10): number[] {
+  return state.history
+    .filter(t => t.bids != null)
+    .slice(-n)
+    .map(t => ((t.bids![oppColor] as number) ?? 0));
+}
+
+function percentile(xs: number[], p: number): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const i = Math.min(s.length - 1, Math.floor((s.length - 1) * p));
+  return s[i];
+}
+
+/**
+ * Classify the opponent's recent bidding style. Drives the realistic
+ * max-bid estimate and the oni's chip-conservation choices in decideBid.
+ * See codex-review-T15-general-strategy-detection.md for the full
+ * derivation; in short:
+ *   - aggressive: standard play, no detectable pattern
+ *   - conservative: 0 連投 (T14), 50/0/50/0 交互 (T15), or any sparse-spend
+ *     pattern where the opponent saves chips for the tieBreaker
+ *   - panic: 20/40/60/80 escalation, all-in pressure, or a recent spike
+ */
+function detectOpponentBidStrategy(
+  state: GameState,
+  oppColor: Color,
+  oppChips: number
+): OppBidStrategy {
+  const bids = recentOpponentBids(state, oppColor, 10);
+  if (bids.length < 3) return 'aggressive';
+
+  const median = percentile(bids, 0.5);
+  const avg = bids.reduce((a, b) => a + b, 0) / bids.length;
+  const zeroRate = bids.filter(b => b === 0).length / bids.length;
+  const maxBid = Math.max(...bids);
+  const last = bids[bids.length - 1];
+
+  const lowMedian = median <= oppChips * 0.05;
+  const variance =
+    bids.reduce((a, b) => a + (b - avg) ** 2, 0) / bids.length;
+  const highVariance = variance > avg * avg;
+
+  // Rising pattern (escalation): must be checked before "conservative" so
+  // that 0/20/40/60/80 stays in panic and not in conservative. Guard
+  // against oppChips=0 so that "0 >= 0*0.5" doesn't trigger a false panic.
+  const rising =
+    bids.length >= 4 &&
+    bids.slice(-4).every((b, i, a) => i === 0 || b > a[i - 1]);
+  if (
+    rising ||
+    (oppChips > 0 && last >= oppChips * 0.5) ||
+    (oppChips > 0 && maxBid >= oppChips * 0.4 && median >= oppChips * 0.15)
+  ) {
+    return 'panic';
+  }
+
+  // T14 (0/0/0/0/0), T15 (50/0/50/0/50), and any future sparse-spend pattern.
+  if (
+    zeroRate >= 0.5 ||
+    (zeroRate >= 0.4 && highVariance) ||
+    lowMedian
+  ) {
+    return 'conservative';
+  }
+
+  return 'aggressive';
+}
+
 function estimateOppMaxBid(
   state: GameState,
   oppColor: Color,
   oppChips: number
 ): number {
-  const past = state.history.filter(t => t.bids != null).slice(-10);
-  if (past.length === 0) return oppChips;
-  let maxBid = 0;
-  let total = 0;
-  let zeroCount = 0;
-  for (const t of past) {
-    const b = (t.bids![oppColor] as number) ?? 0;
-    if (b > maxBid) maxBid = b;
-    if (b === 0) zeroCount++;
-    total += b;
-  }
-  // Zero-bid exploit guard: when the opponent has consistently bid 0 in
-  // the recent window, their realistic max bid for the next turn is 0/1,
-  // not 25% of their stack. Without this guard the oni keeps paying
-  // chips* 0.05 against zero-bid responses and loses on the chip
-  // tieBreaker (scoring.ts: 'CHIPS'). See codex-review-T14.
-  if (past.length >= 3 && zeroCount === past.length) {
-    return 1;
-  }
-  const avg = total / past.length;
-  // Allow for escalation: 2x recent max OR 4x average OR 25% of stack,
-  // whichever is largest. Always upper-bounded by actual oppChips. The
-  // 2x multiplier covers the "escalation" pattern (e.g. 20→40→60→80) so
-  // we don't underbid when the opponent ramps each turn.
-  const estimate = Math.max(maxBid * 2, avg * 4, oppChips * 0.25);
-  return Math.min(oppChips, Math.ceil(estimate));
-}
+  const bids = recentOpponentBids(state, oppColor, 10);
+  if (bids.length === 0) return oppChips;
+  const median = percentile(bids, 0.5);
+  const p75 = percentile(bids, 0.75);
+  const maxBid = Math.max(...bids);
+  const strategy = detectOpponentBidStrategy(state, oppColor, oppChips);
 
-/**
- * Detect the "zero-bid drain" exploit: opponent has bid 0 in every recent
- * round (at least N samples). When this is true, the chip-tieBreaker
- * threatens to flip a 32-32 stone tie into a loss for the oni, so it
- * should match the opponent at 0/1 instead of paying baseBid * chips * 5%.
- */
-function detectOpponentZeroBidAbuse(state: GameState, oppColor: Color): boolean {
-  const past = state.history.filter(t => t.bids != null).slice(-5);
-  if (past.length < 3) return false;
-  for (const t of past) {
-    const b = (t.bids![oppColor] as number) ?? 0;
-    if (b !== 0) return false;
+  let estimate: number;
+  if (strategy === 'conservative') {
+    // 50/0/50/0/50 → median 50, p75 50. We do NOT want to chase a 100;
+    // the opponent only matches 50% of the time. Anchor low.
+    estimate = Math.max(median * 2, p75 * 1.25, oppChips * 0.05);
+  } else if (strategy === 'panic') {
+    // Escalation / all-in pressure: prepare for the next spike.
+    estimate = Math.max(maxBid * 1.25, p75 * 2, oppChips * 0.35);
+  } else {
+    estimate = Math.max(median * 2, p75 * 1.5, oppChips * 0.15);
   }
-  return true;
+  return Math.min(oppChips, Math.ceil(estimate));
 }
 
 /**
@@ -558,7 +632,16 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   // bumped +1 in v2.2 (NPC-mode final strengthening): 11/10/9 from 10/9/8,
   // time budget 900ms from 700ms.
   const depth = empties <= 14 ? 11 : empties <= 22 ? 10 : 9;
-  const { delta, oppBest } = deltaValueOfMoving(state, color, depth, true, 900);
+  // Codex T17 P1: bid forecast can solve the endgame exactly (ONI_BID_EXACT)
+  // and use a tunable budget (ONI_BID_BUDGET). Defaults preserve legacy.
+  const { delta, oppBest } = deltaValueOfMoving(
+    state,
+    color,
+    depth,
+    true,
+    readBidBudget(),
+    readBidExactEmpties()
+  );
   // ONI_BID_V2 selects between two bidding regimes for A/B testing:
   //   v2 (default): holder/non-holder asymmetric base + symmetric token cost
   //                 + relaxed endgame cap
@@ -626,7 +709,7 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
       chips,
       oppChips,
       baseBid,
-      0.85,
+      BID_ALLPAY_SHADE,
       useV2 ? isHolderForTiebreak : false
     );
   } else if (adjusted > 0) {
@@ -635,7 +718,7 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     //  - first-price: ~60% (placement-driven token rule gives a small
     //    extra value to winning when we're not the holder)
     //  - Vickrey:     ~92% (close to truthful but reserve tiny margin)
-    const shade = isVickrey ? 0.92 : 0.6;
+    const shade = isVickrey ? BID_VICKREY_SHADE : BID_FIRST_SHADE;
     const target = Math.floor(valueChips * shade * conservation);
     // Holder doesn't need a tie-break bump under v2 (ties favour holder).
     // Sparse-opening also suppresses the bump (preserve initial holder edge).
@@ -658,12 +741,19 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
   );
   if (defenseBid > 0) bid = Math.max(bid, defenseBid);
 
-  // Zero-bid drain counter (codex-review-T14): when the human consistently
-  // bids 0 to abuse the chip tieBreaker, match them at 0 (holder) or 1
-  // (non-holder). The defenseBid floor still kicks in for genuinely
-  // critical positions, so this only suppresses the wasteful baseBid
-  // chunk in non-tactical sparse opening/midgame moves.
-  if (detectOpponentZeroBidAbuse(state, opponentOf(color))) {
+  // Chip-conservation counter (codex-review-T15, supersedes T14):
+  // classify the opponent's bidding style and drop our own bid to the
+  // minimum when they are a conservative chip-saver (covers 0連投,
+  // 50/0/50/0, and any future sparse-spend pattern). The defenseBid
+  // floor still protects critical tactical positions; in genuinely
+  // critical spots the oni will spend, in non-critical spots it will
+  // stop bleeding chips on hollow auctions.
+  const oppStrategy = detectOpponentBidStrategy(
+    state,
+    opponentOf(color),
+    oppChips
+  );
+  if (oppStrategy === 'conservative') {
     const minCounter = isHolder ? 0 : 1;
     bid = Math.max(minCounter, defenseBid);
   }
@@ -697,6 +787,52 @@ function oniBidV2(): boolean {
   const v = proc.env.ONI_BID_V2 as string | undefined;
   if (v === undefined || v === '') return true;
   return v !== '0' && v !== 'false' && v.toLowerCase() !== 'no';
+}
+
+/**
+ * Codex T17 P1: empties threshold below which the oni's bid forecast solves
+ * the endgame exactly (passed as `exactEndgameEmpties` to strongSearch).
+ * 0 = legacy (approximate forecast even in the endgame). Tunable via
+ * ONI_BID_EXACT for A/B grid search.
+ */
+function readBidExactEmpties(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.ONI_BID_EXACT as string | undefined;
+  if (v == null || v === '') return 0;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Global multiplier on every oni time budget (move search + bid forecast).
+ * Default 1.0. Set ONI_TIME_SCALE=0.25 etc. to run much faster self-play
+ * games for A/B screening (confirm winners at full time afterwards).
+ */
+function readTimeScale(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.ONI_TIME_SCALE as string | undefined;
+  if (v == null || v === '') return 1;
+  const n = parseFloat(v);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/**
+ * Time budget (ms) for the oni's bid forecast (split across the two
+ * strongSearch calls in deltaValueOfMoving). Default 900, scaled by
+ * ONI_TIME_SCALE. Tunable via ONI_BID_BUDGET for A/B grid search.
+ */
+function readBidBudget(): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.ONI_BID_BUDGET as string | undefined;
+  let budget = 900;
+  if (v != null && v !== '') {
+    const n = parseInt(v, 10);
+    if (Number.isFinite(n) && n > 0) budget = n;
+  }
+  return Math.max(50, Math.round(budget * readTimeScale()));
 }
 
 export function decideMove(

@@ -32,6 +32,66 @@ const DIRS: Array<[number, number]> = [
   [1, 1],
 ];
 
+/**
+ * Per-phase eval weights and phase boundaries (Codex T17 P2 — grid-search
+ * infrastructure). Defaults match the historically-tuned v2.4 values; any
+ * subset can be overridden at process start via ONI_EVAL_CFG:
+ *
+ *   ONI_EVAL_CFG="open_mob=7,mid_corner=14,end_stone=10"
+ *
+ * Parsed once at first call (process-level) — A/B tuning must use separate
+ * processes per variant (oniVsLevel.ts), since eval scores stored in the
+ * TT can otherwise mix across variants. Single object property access per
+ * weight keeps evaluateBoard's per-call cost negligible.
+ */
+interface EvalWeights {
+  // Phase boundaries (move count filled into the board).
+  open_end: number; // filled < open_end → opening
+  mid_end: number; //  filled < mid_end → midgame
+  // Opening
+  open_pos: number; open_mob: number; open_corner: number;
+  open_frontier: number; open_stable: number; open_potential: number;
+  // Midgame
+  mid_pos: number; mid_mob: number; mid_corner: number;
+  mid_frontier: number; mid_stable: number; mid_potential: number; mid_stone: number;
+  // Endgame
+  end_pos: number; end_mob: number; end_corner: number;
+  end_stable: number; end_potential: number; end_stone: number;
+}
+
+const EVAL_DEFAULTS: EvalWeights = {
+  open_end: 20,
+  mid_end: 50,
+  open_pos: 1.0, open_mob: 6.0, open_corner: 14.0,
+  open_frontier: 2.0, open_stable: 4.0, open_potential: 3.0,
+  mid_pos: 1.0, mid_mob: 5.0, mid_corner: 16.0,
+  mid_frontier: 2.5, mid_stable: 8.0, mid_potential: 2.5, mid_stone: 0.5,
+  end_pos: 0.4, end_mob: 1.0, end_corner: 10.0,
+  end_stable: 12.0, end_potential: 0.5, end_stone: 6.0,
+};
+
+let CACHED_WEIGHTS: EvalWeights | null = null;
+function getEvalWeights(): EvalWeights {
+  if (CACHED_WEIGHTS !== null) return CACHED_WEIGHTS;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const raw = (proc?.env?.ONI_EVAL_CFG as string | undefined) ?? '';
+  const w: EvalWeights = { ...EVAL_DEFAULTS };
+  if (raw) {
+    for (const part of raw.split(',')) {
+      const eq = part.indexOf('=');
+      if (eq <= 0) continue;
+      const key = part.slice(0, eq).trim();
+      const n = parseFloat(part.slice(eq + 1));
+      if (Number.isFinite(n) && key in w) {
+        (w as unknown as Record<string, number>)[key] = n;
+      }
+    }
+  }
+  CACHED_WEIGHTS = w;
+  return w;
+}
+
 export function positionalScore(board: Board, color: Color): number {
   const opp = opponentOf(color);
   let s = 0;
@@ -594,40 +654,41 @@ export function evaluateBoard(board: Board, color: Color): number {
   //   ONI_CORNER_ADJ=0   → disabled (default)
   // The function is exported and tested for negamax antisymmetry so
   // future weight tuning can re-enable it without code changes.
-  if (filled < 20) {
+  const w = getEvalWeights();
+  if (filled < w.open_end) {
     return (
-      positionalScore(board, color) * 1.0 +
-      mobilityScore(board, color) * 6.0 +
-      cornerControl(board, color) * 14.0 +
+      positionalScore(board, color) * w.open_pos +
+      mobilityScore(board, color) * w.open_mob +
+      cornerControl(board, color) * w.open_corner +
       edgeOpening +
       cornerAdjacentScore(board, color) * 1.5 * adjMul +
-      frontierScore(board, color) * 2.0 +
-      stableDiscScore(board, color) * 4.0 +
-      potentialMobilityScore(board, color) * 3.0
+      frontierScore(board, color) * w.open_frontier +
+      stableDiscScore(board, color) * w.open_stable +
+      potentialMobilityScore(board, color) * w.open_potential
     );
   }
-  if (filled < 50) {
+  if (filled < w.mid_end) {
     return (
-      positionalScore(board, color) * 1.0 +
-      mobilityScore(board, color) * 5.0 +
-      cornerControl(board, color) * 16.0 +
+      positionalScore(board, color) * w.mid_pos +
+      mobilityScore(board, color) * w.mid_mob +
+      cornerControl(board, color) * w.mid_corner +
       edgeMid +
       cornerAdjacentScore(board, color) * 2.0 * adjMul +
-      frontierScore(board, color) * 2.5 +
-      stableDiscScore(board, color) * 8.0 +
-      potentialMobilityScore(board, color) * 2.5 +
-      stoneDifference(board, color) * 0.5
+      frontierScore(board, color) * w.mid_frontier +
+      stableDiscScore(board, color) * w.mid_stable +
+      potentialMobilityScore(board, color) * w.mid_potential +
+      stoneDifference(board, color) * w.mid_stone
     );
   }
   return (
-    positionalScore(board, color) * 0.4 +
-    mobilityScore(board, color) * 1.0 +
-    cornerControl(board, color) * 10.0 +
+    positionalScore(board, color) * w.end_pos +
+    mobilityScore(board, color) * w.end_mob +
+    cornerControl(board, color) * w.end_corner +
     edgeEnd +
     cornerAdjacentScore(board, color) * 0.8 * adjMul +
-    stableDiscScore(board, color) * 12.0 +
-    potentialMobilityScore(board, color) * 0.5 +
-    stoneDifference(board, color) * 6.0
+    stableDiscScore(board, color) * w.end_stable +
+    potentialMobilityScore(board, color) * w.end_potential +
+    stoneDifference(board, color) * w.end_stone
   );
 }
 

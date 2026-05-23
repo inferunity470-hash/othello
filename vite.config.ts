@@ -45,5 +45,13 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    // Run test files sequentially. The time-budgeted oni in ai.test.ts /
+    // aiBidding / oniStrength / aiSearchUpgrades is wall-clock-bounded — if
+    // multiple AI-heavy test files share CPU via the default thread pool,
+    // each oni search gets less compute in the same wall budget and plays
+    // measurably weaker, which manifests as flaky strength tests in CI.
+    // The added wall-time cost is small (~30-60s on this suite) vs the
+    // value of deterministic CI.
+    fileParallelism: false,
   },
 });
