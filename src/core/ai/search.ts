@@ -102,6 +102,25 @@ function readSingular(): boolean {
   return env === '1' || env === '2';
 }
 
+/**
+ * Tunable knobs for grid search (Codex T17 P3). Read once at module load;
+ * defaults match v2.4 values so default behaviour is unchanged. Override at
+ * process launch:
+ *   ONI_FUTILITY_MARGIN_D1=500 ONI_LMR_INDEX=8 npx tsx ...
+ */
+function readEnvNum(name: string, dflt: number): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.[name] as string | undefined;
+  if (v == null || v === '') return dflt;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : dflt;
+}
+const FUT_MARGIN_D1 = readEnvNum('ONI_FUTILITY_MARGIN_D1', 350);
+const FUT_MARGIN_D2 = readEnvNum('ONI_FUTILITY_MARGIN_D2', 700);
+const LMR_INDEX_THRESHOLD = readEnvNum('ONI_LMR_INDEX', 6);
+const LMR_DEPTH_THRESHOLD = readEnvNum('ONI_LMR_DEPTH', 4);
+
 interface KillerSet {
   // up to 2 killer moves per ply
   m: Array<Move | null>;
@@ -564,7 +583,7 @@ function pvs(
       boardEmpty > 18 &&
       !isTactical
     ) {
-      const margin = depth === 1 ? 350 : 700;
+      const margin = depth === 1 ? FUT_MARGIN_D1 : FUT_MARGIN_D2;
       if (getStaticEval() + margin <= alpha) continue;
     }
 
@@ -576,7 +595,7 @@ function pvs(
     // suggestion, or a killer. Conservative thresholds (depth ≥ 4, i ≥ 6)
     // to avoid pruning critical lines.
     let reduce = 0;
-    if (!firstMove && depth >= 4 && i >= 6) {
+    if (!firstMove && depth >= LMR_DEPTH_THRESHOLD && i >= LMR_INDEX_THRESHOLD) {
       const isHigh =
         isCorner(m.row, m.col) ||
         sameMove(ttMove, m) ||
