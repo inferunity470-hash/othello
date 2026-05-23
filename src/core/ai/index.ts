@@ -29,7 +29,24 @@ export interface AIBidContext {
  * chips=100, suggesting the token's marginal value is small for typical
  * game lengths.)
  */
-const TOKEN_COST = 6;
+function readBidEnvNum(name: string, dflt: number): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process;
+  const v = proc?.env?.[name] as string | undefined;
+  if (v == null || v === '') return dflt;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : dflt;
+}
+
+// Codex T17 bid curve infrastructure (default = v2.4 legacy values).
+// Module-load constants — set env at process launch for A/B grid search:
+//   ONI_TOKEN_COST=10 ONI_BID_SCALE=1000 npx tsx ...
+const TOKEN_COST = readBidEnvNum('ONI_TOKEN_COST', 6);
+const BID_SCALE = readBidEnvNum('ONI_BID_SCALE', 800);
+const BID_CAP = readBidEnvNum('ONI_BID_CAP', 0.85);
+const BID_FIRST_SHADE = readBidEnvNum('ONI_BID_FIRST_SHADE', 0.6);
+const BID_VICKREY_SHADE = readBidEnvNum('ONI_BID_VICKREY_SHADE', 0.92);
+const BID_ALLPAY_SHADE = readBidEnvNum('ONI_BID_ALLPAY_SHADE', 0.85);
 
 /**
  * Feature flag: Fear Factor (Codex T11). When the opponent suddenly bids
@@ -331,8 +348,8 @@ function countEmpty(board: import('../types').Board): number {
  */
 function evalPointsToChips(value: number, chips: number): number {
   if (value <= 0) return 0;
-  const decisiveCap = chips * 0.85;
-  return decisiveCap * (1 - Math.exp(-value / 800));
+  const decisiveCap = chips * BID_CAP;
+  return decisiveCap * (1 - Math.exp(-value / BID_SCALE));
 }
 
 /**
@@ -690,7 +707,7 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
       chips,
       oppChips,
       baseBid,
-      0.85,
+      BID_ALLPAY_SHADE,
       useV2 ? isHolderForTiebreak : false
     );
   } else if (adjusted > 0) {
@@ -699,7 +716,7 @@ export function decideBid(ctx: AIBidContext, rng: () => number = Math.random): n
     //  - first-price: ~60% (placement-driven token rule gives a small
     //    extra value to winning when we're not the holder)
     //  - Vickrey:     ~92% (close to truthful but reserve tiny margin)
-    const shade = isVickrey ? 0.92 : 0.6;
+    const shade = isVickrey ? BID_VICKREY_SHADE : BID_FIRST_SHADE;
     const target = Math.floor(valueChips * shade * conservation);
     // Holder doesn't need a tie-break bump under v2 (ties favour holder).
     // Sparse-opening also suppresses the bump (preserve initial holder edge).
