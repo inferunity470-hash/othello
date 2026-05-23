@@ -68,8 +68,13 @@ function playGame(
 const LEVEL = (process.argv[2] ?? 'advanced') as AILevel;
 const N = parseInt(process.argv[3] ?? '16', 10);
 const CHIPS = parseInt(process.argv[4] ?? '100', 10);
-const cm = process.env.ONI_COUNTERMOVE ?? '(default on)';
-console.log(`oni (ONI_COUNTERMOVE=${cm}) vs ${LEVEL}, ${N} games, chips=${CHIPS}`);
+const cm = process.env.ONI_COUNTERMOVE ?? '(default off)';
+const ts = process.env.ONI_TIME_SCALE ?? '1';
+const evalCfg = process.env.ONI_EVAL_CFG ?? '';
+console.log(
+  `oni (CM=${cm}, time_scale=${ts}${evalCfg ? `, eval=${evalCfg}` : ''}) ` +
+    `vs ${LEVEL}, ${N} games, chips=${CHIPS}`
+);
 
 let oniWins = 0;
 let oppWins = 0;
