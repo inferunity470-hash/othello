@@ -286,22 +286,24 @@ function pickOniMove(state: GameState, mover: Color): { row: number; col: number
   let maxDepth: number;
   let exactEndgameEmpties: number;
   let timeBudgetMs: number | undefined;
+  // Codex T17 P3+: per-phase budget / depth / exact-endgame thresholds are
+  // env-configurable for time-budget A/B grid search (defaults = v2.4 values).
   if (empties <= 10) {
-    maxDepth = 22;
+    maxDepth = readBidEnvNum('ONI_DEPTH_LE10', 22);
     exactEndgameEmpties = empties;
-    timeBudgetMs = 4500;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_LE10', 4500);
   } else if (empties <= 18) {
-    maxDepth = 20;
+    maxDepth = readBidEnvNum('ONI_DEPTH_LE18', 20);
     exactEndgameEmpties = empties;
-    timeBudgetMs = 3500;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_LE18', 3500);
   } else if (empties <= 22) {
-    maxDepth = 14;
+    maxDepth = readBidEnvNum('ONI_DEPTH_LE22', 14);
     exactEndgameEmpties = 0;
-    timeBudgetMs = 2200;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_LE22', 2200);
   } else {
-    maxDepth = 11;
+    maxDepth = readBidEnvNum('ONI_DEPTH_DEFAULT', 11);
     exactEndgameEmpties = 0;
-    timeBudgetMs = 1400;
+    timeBudgetMs = readBidEnvNum('ONI_BUDGET_DEFAULT', 1400);
   }
   // Global time-budget scale (ONI_TIME_SCALE) — used to run fast self-play
   // for A/B screening. Default 1.0 leaves the budgets above unchanged.
