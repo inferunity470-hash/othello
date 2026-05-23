@@ -57,17 +57,20 @@ function readLmpStage(): 0 | 1 | 2 {
 }
 
 /**
- * Feature flag: Countermove heuristic (Codex T16 / A4). Default ON — this is
- * an ordering-only change (it never alters a node's minimax value, only the
- * order moves are tried), so the worst case is neutral. Set ONI_COUNTERMOVE=0
- * to disable (used by A/B benchmarking).
+ * Feature flag: Countermove heuristic (Codex T16 / A4). Default OFF.
+ * It is an ordering-only change, but three independent A/B measurements
+ * (oni-vs-oni 8/20; oni-vs-advanced 62.5% ON vs 75% OFF) found no strength
+ * gain — consistent with Codex T17's diagnosis that the existing
+ * TT/IID/killer ordering already captures most of the available signal.
+ * Kept behind ONI_COUNTERMOVE=1 for future investigation; default OFF keeps
+ * the production search identical to the proven v2.4 baseline.
  */
 function readCountermove(): boolean {
   const env =
     typeof process !== 'undefined' && process.env
       ? process.env.ONI_COUNTERMOVE
       : undefined;
-  return env !== '0';
+  return env === '1';
 }
 
 /**
