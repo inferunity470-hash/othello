@@ -305,6 +305,39 @@ function pickOniMove(state: GameState, mover: Color): { row: number; col: number
     exactEndgameEmpties = 0;
     timeBudgetMs = readBidEnvNum('ONI_BUDGET_DEFAULT', 1400);
   }
+  // Selective deep search (v2.6 #5): at "critical" positions — where the
+  // search-tree topology is unusually consequential — extend depth and
+  // budget. Criticality is conservative so the extension fires rarely:
+  //   (a) the mover can place in a corner this turn (locks the corner)
+  //   (b) empties is in the 19–24 transition into exact-endgame territory
+  //   (c) the mover has ≤ 2 legal moves (forced / near-forced)
+  // Default OFF — flip with ONI_SELECTIVE_DEEP=1 (A/B then default).
+  // Multiplier is conservative to avoid breaking the budget profile.
+  const selectiveDeep = (() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const proc = (globalThis as any).process;
+    const v = proc?.env?.ONI_SELECTIVE_DEEP as string | undefined;
+    return v === '1';
+  })();
+  if (selectiveDeep) {
+    const moves = legalMoves(state.board, mover);
+    let critical = false;
+    // (a) corner-capture available this turn
+    for (const m of moves) {
+      if ((m.row === 0 || m.row === 7) && (m.col === 0 || m.col === 7)) {
+        critical = true;
+        break;
+      }
+    }
+    // (b) endgame transition zone
+    if (!critical && empties >= 19 && empties <= 24) critical = true;
+    // (c) near-forced — very few replies make each choice high-stakes
+    if (!critical && moves.length > 0 && moves.length <= 2) critical = true;
+    if (critical) {
+      maxDepth += 2;
+      timeBudgetMs = Math.round(timeBudgetMs * 1.4);
+    }
+  }
   // Global time-budget scale (ONI_TIME_SCALE) — used to run fast self-play
   // for A/B screening. Default 1.0 leaves the budgets above unchanged.
   timeBudgetMs = Math.max(50, Math.round(timeBudgetMs * readTimeScale()));
