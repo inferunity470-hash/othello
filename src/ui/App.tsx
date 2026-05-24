@@ -1,4 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   applyPlacement,
   expectedMover,
@@ -13,6 +20,7 @@ import { BoardView } from './Board';
 import { HUD } from './HUD';
 import { BidPanel } from './BidPanel';
 import { GameLog } from './GameLog';
+import { HandoffOverlay } from './HandoffOverlay';
 import { BidReveal } from './BidReveal';
 import { ResultCard } from './ResultCard';
 import { HelpOverlay } from './HelpOverlay';
@@ -25,19 +33,39 @@ import { setEnabled as setSoundEnabled } from './sound';
 import { SkipLink } from './SkipLink';
 import { useI18n } from '../i18n';
 
+// OnlineLobby pulls in PartyClient + WebSocket plumbing that's irrelevant
+// for hotseat / NPC players. Lazy-load it to keep the initial bundle lean.
+const OnlineLobby = lazy(() =>
+  import('./OnlineLobby').then(mod => ({ default: mod.OnlineLobby }))
+);
+
 /**
- * Offline-only build: NPC games are the sole game mode. Hotseat and
- * online multiplayer are removed for this launch — see the
- * `claude/add-game-launch-guide-DPtLL` branch for the full version.
+ * Online feature flag.
+ *
+ * - In development (`import.meta.env.DEV`), the online tab is shown by default
+ *   so contributors can exercise it locally with `npm run start`.
+ * - In production builds the tab is shown only when
+ *   `VITE_ONLINE_ENABLED` is the string `'true'`. This lets us deploy the
+ *   bundle before WebSocket hosting is finalized and toggle it on without a
+ *   rebuild via env override at the host level.
  */
+const ONLINE_ENABLED: boolean = (() => {
+  const raw = import.meta.env.VITE_ONLINE_ENABLED as string | undefined;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return Boolean(import.meta.env.DEV);
+})();
+
 type Mode =
   | { kind: 'lobby' }
+  | { kind: 'hotseat'; options: GameOptions }
   | {
       kind: 'vs-ai';
       options: GameOptions;
       aiColor: Color;
       level: AILevel;
-    };
+    }
+  | { kind: 'online' };
 
 export function App() {
   const { locale, setLocale, t } = useI18n();
@@ -82,7 +110,7 @@ export function App() {
       <SkipLink to="main-content" />
       <header className="top">
         <h1>
-          <span className="accent">⚫⚪</span> ビッド式オセロ
+          <span className="accent">⚫⚪</span> {t('appTitle')}
         </h1>
         <div className="row" style={{ gap: '0.4rem' }}>
           <button
@@ -133,7 +161,15 @@ export function App() {
       <main id="main-content" tabIndex={-1}>
         <div className="subtitle">着手権を秘密入札で取り合う、戦略的オセロ。</div>
         <div style={{ height: '1rem' }} />
-        {mode.kind === 'lobby' && <Lobby onStart={setMode} />}
+        {mode.kind === 'lobby' && (
+          <Lobby onStart={setMode} onlineEnabled={ONLINE_ENABLED} />
+        )}
+        {mode.kind === 'hotseat' && (
+          <LocalGame
+            options={mode.options}
+            onExit={() => setMode({ kind: 'lobby' })}
+          />
+        )}
         {mode.kind === 'vs-ai' && (
           <AIGame
             options={mode.options}
@@ -141,6 +177,17 @@ export function App() {
             level={mode.level}
             onExit={() => setMode({ kind: 'lobby' })}
           />
+        )}
+        {mode.kind === 'online' && (
+          <Suspense
+            fallback={
+              <div className="lobby">
+                <span className="spinner" /> オンラインモジュールを読み込み中...
+              </div>
+            }
+          >
+            <OnlineLobby onExit={() => setMode({ kind: 'lobby' })} />
+          </Suspense>
         )}
       </main>
       {help && <HelpOverlay onClose={() => setHelp(false)} />}
@@ -151,142 +198,211 @@ export function App() {
 
 /* --------------------------- Lobby --------------------------- */
 
-function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
+function Lobby({
+  onStart,
+  onlineEnabled,
+}: {
+  onStart: (m: Mode) => void;
+  onlineEnabled: boolean;
+}) {
+  type Tab = 'hotseat' | 'ai' | 'online';
+  const [tab, setTab] = useState<Tab>('hotseat');
   const [options, setOptions] = useState<GameOptions>({ ...DEFAULT_OPTIONS });
   const [aiColor, setAiColor] = useState<Color>('WHITE');
   const [level, setLevel] = useState<AILevel>('intermediate');
 
   return (
     <div className="lobby">
-      <h2 style={{ margin: 0 }}>🤖 NPC と対局</h2>
-
-      <div className="row">
+      <div className="tabs" role="tablist">
         <button
-          className="primary"
-          style={{ fontSize: '1.05rem' }}
-          onClick={() =>
-            onStart({
-              kind: 'vs-ai',
-              options: { ...DEFAULT_OPTIONS },
-              aiColor: 'WHITE',
-              level: 'intermediate',
-            })
-          }
-          title="200 チップ・オールペイ・中級 NPC で即対局"
+          className={tab === 'hotseat' ? 'active' : ''}
+          onClick={() => setTab('hotseat')}
+          role="tab"
+          aria-selected={tab === 'hotseat'}
         >
-          ⚡ クイック対局 (中級 NPC)
+          🪑 ホットシート
         </button>
-        <span className="muted" style={{ fontSize: '0.85rem' }}>
-          まずはこれから。設定変更は下のフォームで。
-        </span>
-      </div>
-
-      <div className="row">
-        <label className="stack">
-          <span>初期チップ</span>
-          <input
-            type="number"
-            min={1}
-            max={1000}
-            value={
-              typeof options.initialChips === 'number'
-                ? options.initialChips
-                : options.initialChips.BLACK
-            }
-            onChange={e =>
-              setOptions({
-                ...options,
-                initialChips: parseInt(e.target.value, 10) || 0,
-              })
-            }
-          />
-        </label>
-        <label className="stack">
-          <span>角ボーナス</span>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={options.cornerBonus}
-            onChange={e =>
-              setOptions({
-                ...options,
-                cornerBonus: parseInt(e.target.value, 10) || 0,
-              })
-            }
-          />
-        </label>
-        <label className="stack">
-          <span>連続0入札制限</span>
-          <input
-            type="number"
-            min={0}
-            max={10}
-            placeholder="無制限"
-            value={options.zeroBidStreakLimit ?? ''}
-            onChange={e => {
-              const v = e.target.value;
-              setOptions({
-                ...options,
-                zeroBidStreakLimit: v === '' ? null : Math.max(0, parseInt(v, 10) || 0),
-              });
-            }}
-          />
-        </label>
-        <label className="stack" title="入札方式">
-          <span>競売方式</span>
-          <select
-            value={options.auctionType}
-            onChange={e =>
-              setOptions({
-                ...options,
-                auctionType: e.target.value as GameOptions['auctionType'],
-              })
-            }
+        <button
+          className={tab === 'ai' ? 'active' : ''}
+          onClick={() => setTab('ai')}
+          role="tab"
+          aria-selected={tab === 'ai'}
+        >
+          🤖 NPC 対戦
+        </button>
+        {onlineEnabled && (
+          <button
+            className={tab === 'online' ? 'active' : ''}
+            onClick={() => setTab('online')}
+            role="tab"
+            aria-selected={tab === 'online'}
           >
-            <option value="first-price">🪙 ファースト (落札者のみ支払い)</option>
-            <option value="second-price">🎲 セカンド (Vickrey)</option>
-            <option value="all-pay">💸 オールペイ (両者が入札額を失う)</option>
-          </select>
-        </label>
+            🌐 オンライン対戦
+          </button>
+        )}
       </div>
 
-      <div className="row">
-        <label className="stack">
-          <span>NPC の色</span>
-          <select value={aiColor} onChange={e => setAiColor(e.target.value as Color)}>
-            <option value="WHITE">白(後手)</option>
-            <option value="BLACK">黒(先手)</option>
-          </select>
-        </label>
-        <label className="stack">
-          <span>難易度</span>
-          <select value={level} onChange={e => setLevel(e.target.value as AILevel)}>
-            <option value="beginner">😊 初級 ― ランダム</option>
-            <option value="intermediate">🙂 中級 ― 浅い探索</option>
-            <option value="advanced">😎 上級 ― 深さ4 α-β</option>
-            <option value="oni">😈 鬼 ― 終盤完全解析</option>
-          </select>
-        </label>
-      </div>
+      {tab === 'ai' && (
+        <div className="row">
+          <button
+            className="primary"
+            style={{ fontSize: '1.05rem' }}
+            onClick={() =>
+              onStart({
+                kind: 'vs-ai',
+                options: { ...DEFAULT_OPTIONS },
+                aiColor: 'WHITE',
+                level: 'intermediate',
+              })
+            }
+            title="200 チップ・オールペイ・中級 NPC で即対局"
+          >
+            ⚡ クイック対局 (中級 NPC)
+          </button>
+          <span className="muted" style={{ fontSize: '0.85rem' }}>
+            まずはこれから。設定変更は下のフォームで。
+          </span>
+        </div>
+      )}
+
+      {(tab === 'hotseat' || tab === 'ai') && (
+        <div className="row">
+          <label className="stack">
+            <span>初期チップ</span>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={
+                typeof options.initialChips === 'number'
+                  ? options.initialChips
+                  : options.initialChips.BLACK
+              }
+              onChange={e =>
+                setOptions({
+                  ...options,
+                  initialChips: parseInt(e.target.value, 10) || 0,
+                })
+              }
+            />
+          </label>
+          <label className="stack">
+            <span>角ボーナス</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={options.cornerBonus}
+              onChange={e =>
+                setOptions({
+                  ...options,
+                  cornerBonus: parseInt(e.target.value, 10) || 0,
+                })
+              }
+            />
+          </label>
+          <label className="stack">
+            <span>連続0入札制限</span>
+            <input
+              type="number"
+              min={0}
+              max={10}
+              placeholder="無制限"
+              value={options.zeroBidStreakLimit ?? ''}
+              onChange={e => {
+                const v = e.target.value;
+                setOptions({
+                  ...options,
+                  zeroBidStreakLimit:
+                    v === '' ? null : Math.max(0, parseInt(v, 10) || 0),
+                });
+              }}
+            />
+          </label>
+          <label className="stack" title="入札方式">
+            <span>競売方式</span>
+            <select
+              value={options.auctionType}
+              onChange={e =>
+                setOptions({
+                  ...options,
+                  auctionType: e.target.value as GameOptions['auctionType'],
+                })
+              }
+            >
+              <option value="first-price">🪙 ファースト (落札者のみ支払い)</option>
+              <option value="second-price">🎲 セカンド (Vickrey)</option>
+              <option value="all-pay">💸 オールペイ (両者が入札額を失う)</option>
+            </select>
+          </label>
+        </div>
+      )}
+
+      {tab === 'ai' && (
+        <div className="row">
+          <label className="stack">
+            <span>NPC の色</span>
+            <select value={aiColor} onChange={e => setAiColor(e.target.value as Color)}>
+              <option value="WHITE">白(後手)</option>
+              <option value="BLACK">黒(先手)</option>
+            </select>
+          </label>
+          <label className="stack">
+            <span>難易度</span>
+            <select value={level} onChange={e => setLevel(e.target.value as AILevel)}>
+              <option value="beginner">😊 初級 ― ランダム</option>
+              <option value="intermediate">🙂 中級 ― 浅い探索</option>
+              <option value="advanced">😎 上級 ― 深さ4 α-β</option>
+              <option value="oni">😈 鬼 ― 終盤完全解析</option>
+            </select>
+          </label>
+        </div>
+      )}
 
       <div className="row" style={{ justifyContent: 'flex-end' }}>
-        <button
-          className="primary"
-          onClick={() => onStart({ kind: 'vs-ai', options, aiColor, level })}
-        >
-          ▶ 対局開始
-        </button>
+        {tab === 'hotseat' && (
+          <button
+            className="primary"
+            onClick={() => onStart({ kind: 'hotseat', options })}
+          >
+            ▶ 対局開始
+          </button>
+        )}
+        {tab === 'ai' && (
+          <button
+            className="primary"
+            onClick={() => onStart({ kind: 'vs-ai', options, aiColor, level })}
+          >
+            ▶ NPC と対局
+          </button>
+        )}
+        {tab === 'online' && onlineEnabled && (
+          <button className="primary" onClick={() => onStart({ kind: 'online' })}>
+            ▶ ルーム選択へ
+          </button>
+        )}
       </div>
 
       <div className="muted">
-        鬼難度は本気を出します。デフォルトのオールペイは「敗者も入札額を失う」ルールです。
+        🪑 ホットシート:1台のPCを2人で交代して遊ぶ ・ 🤖
+        NPC:鬼難度は本気を出します
+        {onlineEnabled && ' ・ 🌐 オンライン:ルームコードで友達と。'}
       </div>
     </div>
   );
 }
 
-/* --------------------------- AI --------------------------- */
+/* --------------------------- Hotseat (Local) --------------------------- */
+
+interface LocalGameProps {
+  options: GameOptions;
+  onExit: () => void;
+}
+
+type Handoff =
+  | { kind: 'idle' }
+  | { kind: 'pre-bid'; color: Color }
+  | { kind: 'pre-place' };
 
 interface RevealData {
   bids: { BLACK: number; WHITE: number };
@@ -300,6 +416,207 @@ interface RevealData {
   /** Phase that resolution transitions into (PLACING / FINAL_MOVE / ENDED). */
   nextPhase: GameState['phase'];
 }
+
+function LocalGame({ options, onExit }: LocalGameProps) {
+  const [state, setState] = useState<GameState>(() => {
+    const saved = loadGame('hotseat');
+    if (saved && saved.phase !== 'ENDED') return saved;
+    return initGame(options);
+  });
+  const [bidStep, setBidStep] = useState<Color>(() => {
+    if (state.phase === 'BIDDING') {
+      if (state.pendingBids?.BLACK == null) return 'BLACK';
+      return 'WHITE';
+    }
+    return 'BLACK';
+  });
+  const [handoff, setHandoff] = useState<Handoff>(() =>
+    state.phase === 'BIDDING'
+      ? {
+          kind: 'pre-bid',
+          color: state.pendingBids?.BLACK == null ? 'BLACK' : 'WHITE',
+        }
+      : state.phase === 'PLACING' ||
+          state.phase === 'FREE_MOVE' ||
+          state.phase === 'FINAL_MOVE'
+        ? { kind: 'pre-place' }
+        : { kind: 'idle' }
+  );
+  const [reveal, setReveal] = useState<RevealData | null>(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [restored] = useState<boolean>(state.history.length > 0);
+
+  useEffect(() => {
+    if (state.phase === 'ENDED') {
+      clearSave('hotseat');
+    } else {
+      saveGame('hotseat', state);
+    }
+  }, [state]);
+
+  const handleBid = (color: Color, amount: number) => {
+    const next = setPendingBid(state, color, amount);
+    setState(next);
+    if (color === 'BLACK') {
+      setBidStep('WHITE');
+      setHandoff({ kind: 'pre-bid', color: 'WHITE' });
+    } else {
+      const out = resolvePendingBids(next);
+      setState(out.state);
+      setReveal({
+        bids: out.resolution.bids,
+        winner: out.resolution.winner,
+        payment: out.resolution.payment,
+        payments: out.resolution.payments,
+        tieBroken: out.resolution.tieBroken,
+        holderAtResolve: out.state.initiativeHolder,
+        nextPhase: out.state.phase,
+      });
+      setBidStep('BLACK');
+    }
+  };
+
+  const handleRevealClosed = () => {
+    setReveal(null);
+    if (
+      state.phase === 'PLACING' ||
+      state.phase === 'FREE_MOVE' ||
+      state.phase === 'FINAL_MOVE'
+    ) {
+      setHandoff({ kind: 'pre-place' });
+    } else if (state.phase === 'BIDDING') {
+      setHandoff({ kind: 'pre-bid', color: 'BLACK' });
+    } else {
+      setHandoff({ kind: 'idle' });
+    }
+  };
+
+  const handlePlace = (row: number, col: number) => {
+    const mover = expectedMover(state);
+    if (!mover) return;
+    const next = applyPlacement(state, mover, row, col);
+    setState(next);
+    if (next.phase === 'BIDDING') {
+      setHandoff({ kind: 'pre-bid', color: 'BLACK' });
+    } else if (next.phase === 'FREE_MOVE' || next.phase === 'FINAL_MOVE') {
+      setHandoff({ kind: 'pre-place' });
+    } else {
+      setHandoff({ kind: 'idle' });
+    }
+  };
+
+  useEffect(() => {
+    if (
+      state.phase === 'FINAL_MOVE' &&
+      !hasLegalMove(state.board, state.initiativeHolder)
+    ) {
+      setState(skipFinalMoveIfNoLegal(state));
+    }
+  }, [state.phase, state.initiativeHolder]);
+
+  const placer = useMemo(() => expectedMover(state), [state]);
+
+  return (
+    <div className="game">
+      <div className="board-wrap">
+        <BoardView
+          state={state}
+          showLegalForColor={
+            state.phase === 'PLACING' ||
+            state.phase === 'FREE_MOVE' ||
+            state.phase === 'FINAL_MOVE'
+              ? (placer ?? null)
+              : null
+          }
+          onCellClick={handlePlace}
+          showHeatmap={showHeatmap || state.phase === 'ENDED'}
+        />
+        <div className="row">
+          <button onClick={onExit}>← ロビー</button>
+          <button
+            className={showHeatmap ? 'primary' : 'ghost'}
+            onClick={() => setShowHeatmap(!showHeatmap)}
+          >
+            🔥 ヒートマップ {showHeatmap ? 'オフ' : 'オン'}
+          </button>
+          {state.phase === 'ENDED' && (
+            <button
+              className="primary"
+              onClick={() => {
+                clearSave('hotseat');
+                setState(initGame(options));
+                setBidStep('BLACK');
+                setHandoff({ kind: 'pre-bid', color: 'BLACK' });
+                setShowHeatmap(false);
+              }}
+            >
+              🔄 新しい対局
+            </button>
+          )}
+          {restored && state.phase !== 'ENDED' && (
+            <span className="pill good" title="自動保存から復元">
+              💾 復元済み
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="col">
+        <HUD state={state} />
+        {state.phase === 'BIDDING' && handoff.kind === 'idle' && !reveal && (
+          <BidPanel
+            state={state}
+            color={bidStep}
+            onSubmit={amount => handleBid(bidStep, amount)}
+          />
+        )}
+        <GameLog state={state} />
+        {state.phase === 'ENDED' && <ResultCard state={state} />}
+      </div>
+
+      {handoff.kind === 'pre-bid' && state.phase === 'BIDDING' && !reveal && (
+        <HandoffOverlay
+          title={`🔒 ${handoff.color === 'BLACK' ? '黒' : '白'} の番です`}
+          description="プレイヤーが交代したら確認してください。相手に画面を見られないように。"
+          buttonLabel="確認"
+          onClick={() => setHandoff({ kind: 'idle' })}
+        />
+      )}
+      {handoff.kind === 'pre-place' &&
+        (state.phase === 'PLACING' ||
+          state.phase === 'FREE_MOVE' ||
+          state.phase === 'FINAL_MOVE') && (
+          <HandoffOverlay
+            title={`🎯 ${placer === 'BLACK' ? '黒' : '白'} の着手フェーズ`}
+            description={
+              state.phase === 'FINAL_MOVE'
+                ? '最終1手です(角ボーナスは適用されません)'
+                : state.phase === 'FREE_MOVE'
+                  ? '相手に合法手がないため、無償で着手します。'
+                  : 'ハイライトされたマスをタップしてください。'
+            }
+            buttonLabel="準備OK"
+            onClick={() => setHandoff({ kind: 'idle' })}
+          />
+        )}
+
+      {reveal && (
+        <BidReveal
+          bids={reveal.bids}
+          winner={reveal.winner}
+          payment={reveal.payment}
+          payments={reveal.payments}
+          tieBroken={reveal.tieBroken}
+          holderAtResolve={reveal.holderAtResolve}
+          nextPhase={reveal.nextPhase}
+          onClose={handleRevealClosed}
+        />
+      )}
+    </div>
+  );
+}
+
+/* --------------------------- AI --------------------------- */
 
 interface AIGameProps {
   options: GameOptions;

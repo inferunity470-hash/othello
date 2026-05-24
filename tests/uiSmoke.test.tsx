@@ -34,11 +34,13 @@ beforeEach(() => {
 });
 
 describe('UI smoke (jsdom)', () => {
-  it('App renders the NPC lobby without crashing', () => {
+  it('App renders the lobby with hotseat / NPC tabs', () => {
     const { unmount, getByText } = render(<App />);
     expect(getByText(/ビッド式オセロ/)).toBeTruthy();
-    expect(getByText(/NPC と対局/)).toBeTruthy();
+    // Hotseat is the default tab in the multiplayer-pivot release.
     expect(getByText(/対局開始/)).toBeTruthy();
+    // NPC tab should be present (even when not active) so players can switch.
+    expect(getByText(/NPC 対戦/)).toBeTruthy();
     unmount();
   });
 
@@ -150,8 +152,11 @@ describe('UI smoke (jsdom)', () => {
     unmount();
   });
 
-  it('Lobby shows level options including 鬼', () => {
+  it('Lobby shows level options including 鬼 once the NPC tab is active', () => {
     const { getByText, getByDisplayValue, unmount } = render(<App />);
+    // The lobby now defaults to the hotseat tab. Switch to NPC to expose
+    // difficulty controls.
+    fireEvent.click(getByText(/NPC 対戦/));
     expect(getByText(/難易度/)).toBeTruthy();
     expect(getByDisplayValue(/中級/)).toBeTruthy();
     // Confirm 'oni' option exists

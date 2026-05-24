@@ -56,7 +56,7 @@ const ja = {
 type MessageKey = keyof typeof ja;
 
 const en: Partial<Record<MessageKey, string>> = {
-  appTitle: 'Bidding Othello',
+  appTitle: 'Bid Othello',
   appSubtitle: 'Strategic Othello where every turn is auctioned by sealed bids.',
   rules: 'Rules',
   tour: 'Tour',
