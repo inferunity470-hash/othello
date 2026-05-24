@@ -20,6 +20,7 @@ import { BidPanel } from './BidPanel';
 import { GameLog } from './GameLog';
 import { BidReveal } from './BidReveal';
 import { ResultCard } from './ResultCard';
+import { ChatPanel } from './ChatPanel';
 
 interface Props {
   onExit: () => void;
@@ -60,7 +61,6 @@ export function OnlineLobby({ onExit }: Props) {
   const [chatLog, setChatLog] = useState<
     Array<{ from: Color | 'SPECTATE'; text: string }>
   >([]);
-  const [chatInput, setChatInput] = useState('');
   const [opponentDown, setOpponentDown] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   /**
@@ -231,10 +231,15 @@ export function OnlineLobby({ onExit }: Props) {
     sessionRef.current?.client.send({ t: 'RESIGN' });
   };
 
-  const handleSendChat = () => {
-    if (!chatInput.trim()) return;
-    sessionRef.current?.client.send({ t: 'CHAT', text: chatInput.trim() });
-    setChatInput('');
+  const handleSendChatText = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    // Preset chat strings are short and curated; we still clip defensively
+    // so the server's max-length guard never trips.
+    sessionRef.current?.client.send({
+      t: 'CHAT',
+      text: trimmed.slice(0, 200),
+    });
   };
 
   const handleCopyCode = async () => {
@@ -539,12 +544,7 @@ export function OnlineLobby({ onExit }: Props) {
             </div>
           </div>
         )}
-        <ChatPanel
-          chatLog={chatLog}
-          onSend={handleSendChat}
-          input={chatInput}
-          setInput={setChatInput}
-        />
+        <ChatPanel chatLog={chatLog} onSendText={handleSendChatText} />
       </div>
       {reveal && (
         <BidReveal
@@ -613,57 +613,5 @@ function connectionLabel(s: ConnectionStatus): string {
   }
 }
 
-function ChatPanel({
-  chatLog,
-  onSend,
-  input,
-  setInput,
-}: {
-  chatLog: Array<{ from: Color | 'SPECTATE'; text: string }>;
-  onSend: () => void;
-  input: string;
-  setInput: (s: string) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [chatLog]);
-  return (
-    <div className="bid-panel">
-      <div style={{ fontSize: '0.95rem', fontWeight: 700 }}>💬 チャット</div>
-      <div className="chat-log" ref={ref}>
-        {chatLog.length === 0 && (
-          <span className="muted">まだメッセージはありません</span>
-        )}
-        {chatLog.map((c, i) => (
-          <div key={i}>
-            <span
-              className={
-                c.from === 'BLACK'
-                  ? 'who-black'
-                  : c.from === 'WHITE'
-                    ? 'who-white'
-                    : 'who-spec'
-              }
-            >
-              {c.from === 'BLACK' ? '⚫' : c.from === 'WHITE' ? '⚪' : '👁'}
-            </span>{' '}
-            {c.text}
-          </div>
-        ))}
-      </div>
-      <div className="row">
-        <input
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && onSend()}
-          style={{ flex: 1 }}
-          placeholder="メッセージを入力"
-          maxLength={200}
-        />
-        <button onClick={onSend}>送信</button>
-      </div>
-    </div>
-  );
-}
+// ChatPanel has been moved to ./ChatPanel.tsx — it is now preset-only
+// (free text removed per オーナー判断 2026-05-24 #2).
