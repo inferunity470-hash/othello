@@ -1,87 +1,77 @@
-# Bid Othello — ビッド式オセロ
+# Bid Othello / ビッド式オセロ
+
+> **Othello, but every move is decided by a sealed-bid auction.**
+> 着手権を「秘密入札」で奪い合う、対人戦特化型の新感覚オセロ。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8.svg)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg)
+![React 18](https://img.shields.io/badge/React-18-61DAFB.svg)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF.svg)
 
-通常のオセロをベースに、各手番の着手権を **両者が秘密入札 (ビッド) で取り合う**
-変則ルール。**ホットシート (同機 2 人プレイ)** と **オンライン対戦 (友達とルーム
-コードで合流)** を中心に、NPC 練習モードも 4 段階搭載。
+**Play now → <https://othello-tau-nine.vercel.app>**
 
-English title: **Bid Othello**.
+![Hotseat gameplay](docs/hotseat.gif) <!-- TODO: add asset -->
 
-## 起動方法
+---
 
-### 必要環境
+## What's special?
 
-- Node.js >= 20
-- npm >= 10
+- **All-pay sealed-bid auction** — every turn, both players secretly bid chips for the right to play the next stone. The loser still forfeits the bid.
+- **A first-of-its-kind bidding Othello** — prior-art covers bidding chess, but no production-grade bidding Othello has shipped before (to our knowledge).
+- **Three game modes** — hotseat (pass-and-play), solo vs NPC (4 levels), and online multiplayer with room codes.
+- **PWA** — installable, works offline for hotseat and NPC play, no account required.
+- **No ads, no IAP, no tracking.**
 
-### ローカルで遊ぶ (NPC・ホットシートのみ)
+Standard Othello rules apply for flips; what changes is *who* gets to play, and *how much it costs*.
+
+## Game modes
+
+| Mode | Players | Server | Notes |
+|---|---|---|---|
+| **Hotseat** | 2 humans, same device | None | Hidden-bid UI (`HandoffOverlay`) so neither side sees the other's amount. |
+| **Online** | 2 humans, anywhere | WebSocket | 6-digit room codes. Reconnect, rematch, spectate, canned-phrase chat. |
+| **Solo vs NPC** | 1 human + AI | None | 4 levels: Beginner / Intermediate / Advanced / **Oni** (PVS + endgame solver). |
+
+Three auction formats are selectable: first-price, second-price (Vickrey), and **all-pay** (default).
+
+## Quickstart
 
 ```bash
 git clone https://github.com/inferunity470-hash/othello.git
 cd othello
 npm install
-npm run dev          # http://localhost:5173
+npm run start       # web (5173) + ws (8787) together
 ```
 
-### オンライン対戦も含めてローカルで動かす
+Open <http://localhost:5173> in two tabs/browsers to test online play locally.
 
-WebSocket サーバ (`server/index.ts`, ポート 8787) と web を同時に起動します。
+**Requirements:** Node.js >= 20, npm >= 10.
+
+### Common scripts
 
 ```bash
-npm install
-npm run start        # web (5173) + ws (8787) を concurrently で同時起動
+npm run dev         # web only — hotseat / NPC are fully playable
+npm run server      # WebSocket server only (port 8787)
+npm run build       # production build to dist/
+npm run preview     # preview production build at :4173
+npm run test        # vitest (212+ unit tests)
+npm run test:e2e    # Playwright E2E
+npm run verify      # typecheck + lint + test + build
 ```
 
-別タブ / 別ブラウザで `http://localhost:5173` を開き、「オンライン対戦」タブから
-ルーム作成 → 相手側でルームコード入力で参加できます。
+## Architecture
 
-### 本番ビルド
+- **Frontend** — React 18 + TypeScript (strict) + Vite + `vite-plugin-pwa`. State is local; no global store needed.
+- **Backend** — Node.js + `ws` WebSocket server (`server/index.ts`). Room state is in-memory, ephemeral, discarded on disconnect. No DB, no auth.
+- **AI** — α-β / PVS search with iterative deepening and endgame solver (Oni level). All inference runs in the browser.
+- **Testing** — Vitest for unit/integration, Playwright for E2E.
+- **Mobile** — Capacitor scaffolding (iOS) is included for a future native build.
 
-```bash
-npm run build
-npm run preview      # http://localhost:4173
-```
+### Environment variables
 
-`dist/` を Vercel / Cloudflare Pages / GitHub Pages 等にデプロイ可能。
-サーバ不要のため、`vercel.json` だけで完結します。
-
-### Vercel にデプロイ
-
-1. [vercel.com/new](https://vercel.com/new) で `inferunity470-hash/othello` を import
-2. **Branch** を `offline-launch` に切替
-3. Framework は自動検出 (Vite)
-4. **Deploy**
-
-ビルド成功後、`https://<project>.vercel.app/` で公開されます。
-環境変数の設定は不要です。
-
-## 機能
-
-- **🪑 ホットシート対戦** — 同じ画面を 2 人で交代しながら遊ぶ。入札中は
-  `HandoffOverlay` で相手に画面を見せない設計
-- **🌐 オンライン対戦** — WebSocket ベースの軽量サーバ。6 桁ルームコードで
-  友達と合流、再接続/再戦/観戦に対応。チャットは定型文プリセット (UGC なし)
-- **🤖 NPC 練習** (4 段階の難度)
-  - 😊 初級 — ランダム合法手
-  - 🙂 中級 — 浅い α-β 探索
-  - 😎 上級 — 深さ 4 α-β + 順序付け
-  - 😈 鬼 — 反復深化 PVS + 終盤完全解析 (1-3 秒思考)
-- **3 種類の競売方式**
-  - 🪙 ファースト (落札者のみ支払い)
-  - 🎲 セカンド (Vickrey)
-  - 💸 オールペイ (敗者も入札分を失う) ← デフォルト
-- **PWA 対応** — ホームスクリーンに追加してオフライン起動可
-- **アクセシビリティ** — 色覚配慮モード、動き軽減、キーボード操作
-- **国際化** — 日本語 / 英語
-
-## 環境変数
-
-- `VITE_WS_URL` — オンライン対戦の WebSocket エンドポイント。
-  例: 本番 `wss://bid-othello-ws.onrender.com`、ローカル `ws://localhost:8787`。
-- `VITE_ONLINE_ENABLED` — `true` / `false`。`true` の時のみオンラインタブを
-  表示。未設定時は開発ビルドで自動 on。WebSocket サーバが未デプロイの間は
-  本番で `false` を設定して非表示にできる。
+- `VITE_WS_URL` — WebSocket endpoint for online play. Example: `wss://bid-othello-ws.onrender.com` (prod) / `ws://localhost:8787` (local).
+- `VITE_ONLINE_ENABLED` — `true` / `false`. When `false`, the online tab is hidden. Useful while the WS server is not yet deployed.
 
 ## Deployment
 
@@ -92,7 +82,13 @@ npm run preview      # http://localhost:4173
 
 ### Web (Vercel)
 
-上記「Vercel にデプロイ」節を参照。`dist/` を Vercel が自動ビルドする。
+1. [vercel.com/new](https://vercel.com/new) で `inferunity470-hash/othello` を import
+2. **Branch** を `offline-launch` に切替
+3. Framework は自動検出 (Vite)
+4. **Deploy**
+
+ビルド成功後、`https://<project>.vercel.app/` で公開されます。
+環境変数の設定は不要です（オンライン対戦を有効化する場合は `VITE_WS_URL` と `VITE_ONLINE_ENABLED` を設定）。
 
 ### WebSocket サーバ (Render Free)
 
@@ -124,21 +120,44 @@ npm run preview      # http://localhost:4173
 [`Dockerfile`](Dockerfile) も同梱している (現状は未使用)。`flyctl launch`
 で WS サーバを Fly.io に移行可能。
 
-## ルール詳細
+## Project structure
 
-[docs/RULES.md](docs/RULES.md) を参照。
+```
+othello/
+├── src/                # React + game core
+│   ├── core/           # rules, bidding, AI (α-β, PVS, endgame solver)
+│   ├── components/     # board, hotseat overlay, online lobby, etc.
+│   └── i18n/           # ja / en
+├── server/             # WebSocket server (ws + rooms)
+├── tests/              # vitest unit / integration
+├── e2e/                # Playwright
+├── tools/              # AI self-play, A/B harnesses, telemetry
+├── docs/               # RULES.md, AI.md
+├── public/             # PWA manifest, icons, privacy.html
+├── render.yaml         # Render Blueprint (WS server)
+├── vercel.json         # Vercel config (web)
+├── fly.toml            # Fly.io migration candidate
+└── Dockerfile          # for Fly.io / generic container hosts
+```
 
-## AI 設計
+## Documentation
 
-[docs/AI.md](docs/AI.md) を参照。
+- [docs/RULES.md](docs/RULES.md) — full rules (bidding, token transfer, tie-breaks)
+- [docs/AI.md](docs/AI.md) — AI design notes
+- [PRIVACY.md](PRIVACY.md) — privacy policy
+- [TERMS.md](TERMS.md) — terms of use
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guide
 
-## 関連ドキュメント
+## Contributing
 
-- [LICENSE](LICENSE) — MIT
-- [PRIVACY.md](PRIVACY.md) — プライバシーポリシー
-- [TERMS.md](TERMS.md) — 利用規約
-- [CONTRIBUTING.md](CONTRIBUTING.md) — 開発参加ガイド
+Issues and pull requests are welcome. This is a personal project, so response times vary, but feedback on rules balance, AI strength, or UX is especially appreciated. Please see [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
-## ライセンス
+## License
 
-MIT License — 詳細は [LICENSE](LICENSE) を参照。
+[MIT](LICENSE) © 2025 inferunity470-hash
+
+## Acknowledgements
+
+- Inspired by the literature on **bidding chess** (Richman games / all-pay auction variants) and abstract strategy auction games.
+- Built on top of the classic Othello / Reversi ruleset; this project does not affiliate with or claim trademark on "Othello".
+- Thanks to the React, Vite, and `ws` ecosystems.
