@@ -9,10 +9,13 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'ビッド式オセロ',
-        short_name: 'BidOthello',
+        // English: "Bid Othello". UI text is localised via the in-app i18n
+        // layer; the manifest itself stays Japanese-primary so JA stores and
+        // launchers show the native title.
+        name: 'ビッド式オセロ (Bid Othello)',
+        short_name: 'Bid Othello',
         description:
-          '着手権を秘密入札で取り合う戦略的オセロ。NPC 4 段階・オンライン対戦対応。',
+          '着手権を秘密入札で取り合う戦略的オセロ。ホットシート・オンライン対戦・NPC 4 段階対応。',
         theme_color: '#1c2438',
         background_color: '#0d1220',
         display: 'standalone',
