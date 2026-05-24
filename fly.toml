@@ -1,0 +1,42 @@
+# Fly.io configuration for the Bid Othello WebSocket server.
+#
+# Deploy is intentionally NOT executed automatically — the owner reviews this
+# manifest first and runs `fly launch` / `fly deploy` manually once they are
+# ready. See `server/index.ts` for the application; this file is only the
+# Fly-side configuration.
+
+app = "bid-othello-ws"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # The application reads `PORT` from the environment; Fly's [http_service]
+  # block ensures requests on 443 (TLS) are proxied to the internal port
+  # below, which the Node process binds to.
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  # Cheap TCP-level liveness probe; the HTTP server in `server/index.ts`
+  # responds to GET / for free regardless of WebSocket upgrade.
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/"
+
+[[vm]]
+  # Small instance is fine — the server is single-process Node.js with
+  # in-memory rooms. Scale up only if we add persistence or many rooms.
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
