@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: bid-othello-ws
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm run server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: PORT
+        value: "8787"
+      # ALLOWED_ORIGINS は Render Dashboard で設定する想定:
+      #   例: https://bid-othello.vercel.app
+      # 未設定時はすべての Origin を許可 (開発用 fallback)。

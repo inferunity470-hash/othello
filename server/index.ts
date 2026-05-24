@@ -105,9 +105,14 @@ const MAX_MESSAGE_BYTES = 4096;
 
 // Wrap the WS server in an HTTP server so platforms that health-check
 // via plain HTTP (Render, Fly.io, Railway) can accept the deployment.
-// `/healthz` always returns 200; everything else describes the service.
+// `/health` and `/healthz` both return 200; `/` returns a brief status.
 const httpServer = createServer((req, res) => {
-  if (req.url === '/healthz' || req.url === '/') {
+  if (req.url === '/health' || req.url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+  if (req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('ok');
     return;

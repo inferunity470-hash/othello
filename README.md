@@ -78,10 +78,51 @@ npm run preview      # http://localhost:4173
 ## 環境変数
 
 - `VITE_WS_URL` — オンライン対戦の WebSocket エンドポイント。
-  例: 本番 `wss://bid-othello-ws.fly.dev`、ローカル `ws://localhost:8787`。
+  例: 本番 `wss://bid-othello-ws.onrender.com`、ローカル `ws://localhost:8787`。
 - `VITE_ONLINE_ENABLED` — `true` / `false`。`true` の時のみオンラインタブを
   表示。未設定時は開発ビルドで自動 on。WebSocket サーバが未デプロイの間は
   本番で `false` を設定して非表示にできる。
+
+## Deployment
+
+本番は **2 サービス構成**:
+
+- **Web (静的 SPA)** — Vercel
+- **WebSocket サーバ** — Render (Free プラン)
+
+### Web (Vercel)
+
+上記「Vercel にデプロイ」節を参照。`dist/` を Vercel が自動ビルドする。
+
+### WebSocket サーバ (Render Free)
+
+リポジトリルートに [`render.yaml`](render.yaml) を同梱しているため、Blueprint
+として自動検出される。
+
+1. [render.com/dashboard](https://dashboard.render.com/) → **New +** → **Blueprint**
+2. リポジトリ `inferunity470-hash/othello` を選択
+3. `render.yaml` が検出され、`bid-othello-ws` Web Service として
+   Free プランで作成される (Singapore region, Node 20)
+4. デプロイ完了後、`https://bid-othello-ws.onrender.com/health` が
+   `{"ok":true}` を返すことを確認
+5. Render Dashboard の **Environment** で `ALLOWED_ORIGINS` を
+   Vercel の公開 URL (例: `https://bid-othello.vercel.app`) に設定
+6. Vercel 側の **Environment Variables** に
+   `VITE_WS_URL=wss://bid-othello-ws.onrender.com` を追加し、再デプロイ
+
+#### Render Free の制約
+
+- **15 分アイドルで自動スリープ** — 久しぶりの接続は 30〜60 秒のコールド
+  スタートが発生する。オンラインロビーには「サーバ起動中...」表示で
+  ユーザーを待たせる UX を入れている
+- 750 時間/月の無料枠 (常時稼働でも 1 サービスなら収まる)
+- クレジットカード登録不要
+
+### 移行候補: Fly.io
+
+将来的に sleep を回避したい場合に備え、[`fly.toml`](fly.toml) と
+[`Dockerfile`](Dockerfile) も同梱している (現状は未使用)。`flyctl launch`
+で WS サーバを Fly.io に移行可能。
 
 ## ルール詳細
 
