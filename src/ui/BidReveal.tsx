@@ -174,7 +174,11 @@ export function BidReveal({
               </div>
             </div>
             <div className={`versus ${tieBroken && opened && !verdict ? 'coin-spin' : ''}`}>
-              {tieBroken && opened && !verdict ? '🟡' : 'VS'}
+              {tieBroken && opened && !verdict ? (
+                <span className="coin-disc" aria-hidden="true" />
+              ) : (
+                'VS'
+              )}
             </div>
             <div className={sideClass('WHITE')} aria-label={`白の入札 ${bids.WHITE}`}>
               <div className="bid-card-inner">
@@ -186,7 +190,14 @@ export function BidReveal({
           <div className="bid-verdict" style={{ textAlign: 'center', fontSize: '1.05rem' }}>
             {verdict ? (
               <div className="bid-verdict-in">
-                {tieBroken ? '🟡 同額 → ' : '🏆 '}
+                {tieBroken ? (
+                  <>
+                    <span className="coin-disc coin-disc-sm" aria-hidden="true" />{' '}
+                    同額 →{' '}
+                  </>
+                ) : (
+                  '🏆 '
+                )}
                 <strong style={{ color: 'var(--accent)' }}>
                   {winner === 'BLACK' ? '黒' : '白'}
                 </strong>{' '}

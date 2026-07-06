@@ -1012,7 +1012,7 @@ label.stack {
 }
 
 .bid-card-inner {
-  position: relative;
+  display: grid;
   transform-style: preserve-3d;
   transition: transform 0.45s cubic-bezier(0.3, 0.9, 0.4, 1.1);
 }
@@ -1021,13 +1021,18 @@ label.stack {
   transform: rotateY(180deg);
 }
 
+/* Both faces share the same grid cell so the card sizes to the larger
+   face — no absolute positioning, so long numbers can't spill out. */
 .bid-card-face {
+  grid-area: 1 / 1;
   font-size: 2rem;
   font-weight: 800;
-  padding: 0.7rem 1.2rem;
+  padding: 0.7rem 0.6rem;
   border-radius: 10px;
   background: var(--panel-2);
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
@@ -1038,11 +1043,27 @@ label.stack {
 }
 
 .bid-card-face.back {
-  position: absolute;
-  inset: 0;
+  transform: rotateY(180deg);
   display: grid;
   place-items: center;
-  transform: rotateY(180deg);
+}
+
+/* Pure-CSS coin: emoji coins (🪙/🟡) render as tofu on Windows 10. */
+.coin-disc {
+  display: inline-block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe9a8, #f5b041 55%, #c98a1e);
+  border: 2px solid #a9761a;
+  vertical-align: -0.3rem;
+}
+
+.coin-disc.coin-disc-sm {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-width: 1.5px;
+  vertical-align: -0.12rem;
 }
 
 .bid-flip.winner .bid-card-face.back {
