@@ -13,6 +13,10 @@ export type SoundName =
   | 'flip' // one or more stones flipped
   | 'bid' // a bid was confirmed (UI tick)
   | 'reveal' // bid reveal modal opens
+  | 'drumroll' // tension build-up before bids flip open
+  | 'stamp' // bid numbers stamp in (cards flip open)
+  | 'bidWin' // bid winner decided (short sting)
+  | 'coin' // tie-break coin flip
   | 'cornerBonus' // chip count went up (e.g. corner bonus)
   | 'gameWin'
   | 'gameLose'
@@ -110,6 +114,38 @@ export function play(name: SoundName) {
       seq([
         { at: 0, freq: 523, dur: 0.16 },
         { at: 0.09, freq: 659, dur: 0.18 },
+      ]);
+      break;
+    case 'drumroll':
+      // Accelerating low ticks (~0.85s) building tension before the flip.
+      seq(
+        [0, 0.14, 0.27, 0.39, 0.5, 0.6, 0.68, 0.75, 0.81].map((at, i) => ({
+          at,
+          freq: 190 + i * 6,
+          dur: 0.05,
+          type: 'square' as OscillatorType,
+          gain: 0.14 + i * 0.015,
+        }))
+      );
+      break;
+    case 'stamp':
+      // Low thud + short click: the bid numbers land.
+      seq([
+        { at: 0, freq: 110, dur: 0.14, type: 'sine', gain: 0.65 },
+        { at: 0.01, freq: 720, dur: 0.03, type: 'square', gain: 0.18 },
+      ]);
+      break;
+    case 'bidWin':
+      seq([
+        { at: 0, freq: 587, dur: 0.09, type: 'triangle', gain: 0.5 },
+        { at: 0.08, freq: 880, dur: 0.16, type: 'triangle', gain: 0.55 },
+      ]);
+      break;
+    case 'coin':
+      seq([
+        { at: 0, freq: 988, dur: 0.06, type: 'triangle', gain: 0.4 },
+        { at: 0.07, freq: 1319, dur: 0.12, type: 'triangle', gain: 0.4 },
+        { at: 0.16, freq: 988, dur: 0.06, type: 'triangle', gain: 0.3 },
       ]);
       break;
     case 'cornerBonus':

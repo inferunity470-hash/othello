@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Color, GamePhase } from '../core/types';
 import { FocusTrap } from './FocusTrap';
 import { play as playSound } from './sound';
@@ -22,12 +22,39 @@ interface Props {
   /** Phase that resolution transitions into. */
   nextPhase?: GamePhase | null;
   onClose: () => void;
+  /** Reading time after the verdict lands (total time is longer). */
   autoCloseMs?: number;
+}
+
+/**
+ * Reveal runs as a staged sequence to build tension:
+ *   sealed  — both bids face-down, cards vibrate, drumroll (~0.9s)
+ *   open    — cards flip, numbers stamp in (+ coin beat on ties)
+ *   verdict — winner bursts, payment / token info slides in
+ * With prefers-reduced-motion the sequence collapses straight to `verdict`.
+ */
+type RevealStage = 'sealed' | 'open' | 'verdict';
+
+const FLIP_AT_MS = 900;
+const VERDICT_DELAY_MS = 750; // after flip
+const TIE_COIN_MS = 650; // extra beat between flip and verdict on ties
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
 }
 
 function useCountUp(target: number, durationMs = 600): number {
   const [val, setVal] = useState(0);
   useEffect(() => {
+    if (durationMs <= 0) {
+      setVal(target);
+      return;
+    }
     setVal(0);
     if (target === 0) {
       setVal(0);
@@ -59,15 +86,42 @@ export function BidReveal({
   onClose,
   autoCloseMs = 2400,
 }: Props) {
+  const reduced = useMemo(prefersReducedMotion, []);
+  const [stage, setStage] = useState<RevealStage>(reduced ? 'verdict' : 'sealed');
+
   // Resolve loser's payment for "all-pay" mode; defaults to 0 (winner-only).
   const loserColor: Color = winner === 'BLACK' ? 'WHITE' : 'BLACK';
   const loserPayment = payments ? payments[loserColor] : 0;
   const isAllPay = loserPayment > 0;
+
   useEffect(() => {
-    playSound('reveal');
-    const t = setTimeout(onClose, autoCloseMs);
-    return () => clearTimeout(t);
-  }, [autoCloseMs, onClose]);
+    if (reduced) {
+      playSound('reveal');
+      const t = setTimeout(onClose, autoCloseMs);
+      return () => clearTimeout(t);
+    }
+    playSound('drumroll');
+    const verdictAt =
+      FLIP_AT_MS + (tieBroken ? TIE_COIN_MS : 0) + VERDICT_DELAY_MS;
+    const timers: ReturnType<typeof setTimeout>[] = [
+      setTimeout(() => {
+        setStage('open');
+        playSound('stamp');
+      }, FLIP_AT_MS),
+      setTimeout(() => {
+        setStage('verdict');
+        playSound('bidWin');
+      }, verdictAt),
+      setTimeout(onClose, verdictAt + autoCloseMs),
+    ];
+    if (tieBroken) {
+      timers.push(
+        setTimeout(() => playSound('coin'), FLIP_AT_MS + 150)
+      );
+    }
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCloseMs, onClose, reduced, tieBroken]);
 
   // Determine the actual placer of the upcoming move.
   const placer: Color | null =
@@ -83,10 +137,20 @@ export function BidReveal({
   const tokenStays =
     holderAtResolve != null && placer != null && placer !== holderAtResolve;
 
-  const paymentVal = useCountUp(payment, 600);
-  const loserPaymentVal = useCountUp(loserPayment, 600);
-  const blackVal = useCountUp(bids.BLACK, 700);
-  const whiteVal = useCountUp(bids.WHITE, 700);
+  const opened = stage !== 'sealed';
+  const verdict = stage === 'verdict';
+  const countMs = reduced ? 0 : 500;
+  const blackVal = useCountUp(opened ? bids.BLACK : 0, countMs);
+  const whiteVal = useCountUp(opened ? bids.WHITE : 0, countMs);
+  const paymentVal = useCountUp(verdict ? payment : 0, countMs);
+  const loserPaymentVal = useCountUp(verdict ? loserPayment : 0, countMs);
+
+  const sideClass = (color: Color) => {
+    const cls = ['bid-flip', color === 'BLACK' ? 'black' : 'white'];
+    if (opened) cls.push('flipped');
+    if (verdict) cls.push(winner === color ? 'winner' : 'loser');
+    return cls.join(' ');
+  };
 
   return (
     <div
@@ -103,50 +167,60 @@ export function BidReveal({
         >
           <h2 style={{ textAlign: 'center' }}>入札公開</h2>
           <div className="bid-reveal">
-            <div
-              className={`bid-reveal-side black ${winner === 'BLACK' ? 'winner' : ''}`}
-              aria-label={`黒の入札 ${bids.BLACK}`}
-            >
-              ⚫ {blackVal}
+            <div className={sideClass('BLACK')} aria-label={`黒の入札 ${bids.BLACK}`}>
+              <div className="bid-card-inner">
+                <div className="bid-card-face front">⚫ ?</div>
+                <div className="bid-card-face back">⚫ {blackVal}</div>
+              </div>
             </div>
-            <div className="versus">VS</div>
-            <div
-              className={`bid-reveal-side white ${winner === 'WHITE' ? 'winner' : ''}`}
-              aria-label={`白の入札 ${bids.WHITE}`}
-            >
-              {whiteVal} ⚪
+            <div className={`versus ${tieBroken && opened && !verdict ? 'coin-spin' : ''}`}>
+              {tieBroken && opened && !verdict ? '🪙' : 'VS'}
+            </div>
+            <div className={sideClass('WHITE')} aria-label={`白の入札 ${bids.WHITE}`}>
+              <div className="bid-card-inner">
+                <div className="bid-card-face front">? ⚪</div>
+                <div className="bid-card-face back">{whiteVal} ⚪</div>
+              </div>
             </div>
           </div>
-          <div style={{ textAlign: 'center', fontSize: '1.05rem' }}>
-            {tieBroken ? '🪙 同額 → ' : '🏆 '}
-            <strong style={{ color: 'var(--accent)' }}>
-              {winner === 'BLACK' ? '黒' : '白'}
-            </strong>{' '}
-            が <strong>{paymentVal}</strong> を支払って着手
-            {isAllPay && (
-              <div
-                className="muted"
-                style={{ marginTop: '0.3rem' }}
-                aria-label="敗者支払い (オールペイ)"
-              >
-                💸 {loserColor === 'BLACK' ? '黒' : '白'} も{' '}
-                <strong>{loserPaymentVal}</strong> を失います (オールペイ)
+          <div className="bid-verdict" style={{ textAlign: 'center', fontSize: '1.05rem' }}>
+            {verdict ? (
+              <div className="bid-verdict-in">
+                {tieBroken ? '🪙 同額 → ' : '🏆 '}
+                <strong style={{ color: 'var(--accent)' }}>
+                  {winner === 'BLACK' ? '黒' : '白'}
+                </strong>{' '}
+                が <strong>{paymentVal}</strong> を支払って着手
+                {isAllPay && (
+                  <div
+                    className="muted"
+                    style={{ marginTop: '0.3rem' }}
+                    aria-label="敗者支払い (オールペイ)"
+                  >
+                    💸 {loserColor === 'BLACK' ? '黒' : '白'} も{' '}
+                    <strong>{loserPaymentVal}</strong> を失います (オールペイ)
+                  </div>
+                )}
+                {tokenWillTransfer && (
+                  <div
+                    className="muted"
+                    style={{ marginTop: '0.3rem' }}
+                    aria-label="トークン移動予告"
+                  >
+                    着手後、先手権トークンが {winner === 'BLACK' ? '白' : '黒'}{' '}
+                    に移動します
+                  </div>
+                )}
+                {tokenStays && (
+                  <div className="muted" style={{ marginTop: '0.3rem' }}>
+                    先手権トークンは{' '}
+                    {holderAtResolve === 'BLACK' ? '黒' : '白'} のまま維持
+                  </div>
+                )}
               </div>
-            )}
-            {tokenWillTransfer && (
-              <div
-                className="muted"
-                style={{ marginTop: '0.3rem' }}
-                aria-label="トークン移動予告"
-              >
-                着手後、先手権トークンが {winner === 'BLACK' ? '白' : '黒'}{' '}
-                に移動します
-              </div>
-            )}
-            {tokenStays && (
-              <div className="muted" style={{ marginTop: '0.3rem' }}>
-                先手権トークンは{' '}
-                {holderAtResolve === 'BLACK' ? '黒' : '白'} のまま維持
+            ) : (
+              <div className="muted">
+                {opened && tieBroken ? '同額! コイントスで決着...' : '開示中...'}
               </div>
             )}
           </div>

@@ -21,6 +21,7 @@ import { GameLog } from './GameLog';
 import { BidReveal } from './BidReveal';
 import { ResultCard } from './ResultCard';
 import { ChatPanel } from './ChatPanel';
+import { play as playSound } from './sound';
 
 interface Props {
   onExit: () => void;
@@ -114,7 +115,12 @@ export function OnlineLobby({ onExit }: Props) {
       return;
     }
     if (msg.t === 'BID_RECEIVED') {
-      setOpponentBidIn(true);
+      // The server broadcasts BID_RECEIVED for *both* players' bids —
+      // only the opponent's should flip the waiting indicator.
+      if (msg.color !== sessionRef.current?.you) {
+        setOpponentBidIn(true);
+        playSound('stamp');
+      }
       return;
     }
     if (msg.t === 'BID_REVEAL') {
@@ -480,21 +486,50 @@ export function OnlineLobby({ onExit }: Props) {
       <div className="col">
         {state && <HUD state={state} myColor={session.you} />}
         {state && myTurnToBid && !reveal && (
-          <BidPanel state={state} color={session.you as Color} onSubmit={handleBid} />
+          <>
+            {opponentBidIn && (
+              <div className="pressure-banner" role="status">
+                ⚡ 相手は入札済み — あなたの決断待ちです
+              </div>
+            )}
+            <BidPanel state={state} color={session.you as Color} onSubmit={handleBid} />
+          </>
         )}
         {state &&
           state.phase === 'BIDDING' &&
           !youAreSpec &&
           state.pendingBids?.[session.you as Color] != null &&
           !reveal && (
-            <div className="bid-panel">
-              <div>
-                ✓ あなたは <strong>{state.pendingBids?.[session.you as Color]}</strong>{' '}
-                を入札しました。
+            <div className="bid-panel bid-waiting">
+              <div className="bid-wait-row">
+                <div className="bid-wait-side done">
+                  <span className="bid-wait-icon">🔒</span>
+                  <span>
+                    あなた
+                    <br />
+                    <strong>
+                      {state.pendingBids?.[session.you as Color]} を封入
+                    </strong>
+                  </span>
+                </div>
+                <div className="versus">VS</div>
+                <div className={`bid-wait-side ${opponentBidIn ? 'done' : 'thinking'}`}>
+                  <span className="bid-wait-icon">
+                    {opponentBidIn ? '🔒' : '💭'}
+                  </span>
+                  <span>
+                    相手
+                    <br />
+                    <strong className={opponentBidIn ? undefined : 'thinking-dots'}>
+                      {opponentBidIn ? '封入済み' : '熟考中'}
+                    </strong>
+                  </span>
+                </div>
               </div>
-              <div className="muted">
-                <span className="spinner" />
-                {opponentBidIn ? '集計中...' : '相手の入札を待機中...'}
+              <div className="muted" style={{ textAlign: 'center' }}>
+                {opponentBidIn
+                  ? '⚡ 両者封入完了 — 開示!'
+                  : 'あなたの入札額は相手には見えません'}
               </div>
             </div>
           )}

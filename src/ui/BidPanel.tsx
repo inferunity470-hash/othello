@@ -23,8 +23,20 @@ export function BidPanel({ state, color, onSubmit, label }: Props) {
   const validation = validateBid(amount, chips, minBid);
   const presets = useMemo(() => buildPresets(chips, minBid), [chips, minBid]);
 
+  // Visual risk feedback: the panel heats up as the bid eats more of the
+  // player's stack. All-in gets its own treatment.
+  const ratio = chips > 0 ? Math.max(0, Math.min(1, amount / chips)) : 0;
+  const risk =
+    chips > 0 && amount >= chips
+      ? 'allin'
+      : ratio >= 0.6
+        ? 'high'
+        : ratio >= 0.25
+          ? 'mid'
+          : 'low';
+
   return (
-    <div className="bid-panel">
+    <div className={`bid-panel risk-${risk}`}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h3>
           {color === 'BLACK' ? '⚫' : '⚪'}{' '}
@@ -70,6 +82,7 @@ export function BidPanel({ state, color, onSubmit, label }: Props) {
         <span>
           残 <strong>{Math.max(0, chips - amount)}</strong>
         </span>
+        {risk === 'allin' && <span className="pill allin">🔥 オールイン!</span>}
         {minBid > 0 && <span className="pill warn">最小 {minBid}</span>}
         {state.options.auctionType === 'all-pay' && (
           <span
@@ -91,7 +104,11 @@ export function BidPanel({ state, color, onSubmit, label }: Props) {
 
       <div className="quick-bid-grid">
         {presets.map(p => (
-          <button key={p.label} onClick={() => setAmount(p.value)}>
+          <button
+            key={p.label}
+            className={p.label === '全額' ? 'preset-allin' : undefined}
+            onClick={() => setAmount(p.value)}
+          >
             {p.label}
           </button>
         ))}
