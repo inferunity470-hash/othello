@@ -36,7 +36,7 @@ export function AuctionTypeToggle({ value, onChange }: Props) {
           onClick={() => onChange('first-price')}
           title="落札者が自分の入札額を支払う"
         >
-          🪙 ファースト
+          💰 ファースト
         </button>
         <button
           role="radio"

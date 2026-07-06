@@ -55,7 +55,7 @@ export const LOBBY_PRESETS: LobbyPreset[] = [
   },
   {
     key: 'vickrey',
-    emoji: '🪙',
+    emoji: '🎲',
     label: 'セカンド',
     description: 'Vickrey 競売 (落札者が相手の額を支払う)',
     options: {

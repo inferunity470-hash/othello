@@ -330,7 +330,7 @@ function Lobby({
                 })
               }
             >
-              <option value="first-price">🪙 ファースト (落札者のみ支払い)</option>
+              <option value="first-price">💰 ファースト (落札者のみ支払い)</option>
               <option value="second-price">🎲 セカンド (Vickrey)</option>
               <option value="all-pay">💸 オールペイ (両者が入札額を失う)</option>
             </select>
