@@ -169,8 +169,12 @@ export function BidReveal({
           <div className="bid-reveal">
             <div className={sideClass('BLACK')} aria-label={`黒の入札 ${bids.BLACK}`}>
               <div className="bid-card-inner">
-                <div className="bid-card-face front">⚫ ?</div>
-                <div className="bid-card-face back">⚫ {blackVal}</div>
+                <div className="bid-card-face front">
+                  <span>⚫ ?</span>
+                </div>
+                <div className="bid-card-face back">
+                  <span>⚫ {blackVal}</span>
+                </div>
               </div>
             </div>
             <div className={`versus ${tieBroken && opened && !verdict ? 'coin-spin' : ''}`}>
@@ -182,8 +186,12 @@ export function BidReveal({
             </div>
             <div className={sideClass('WHITE')} aria-label={`白の入札 ${bids.WHITE}`}>
               <div className="bid-card-inner">
-                <div className="bid-card-face front">? ⚪</div>
-                <div className="bid-card-face back">{whiteVal} ⚪</div>
+                <div className="bid-card-face front">
+                  <span>? ⚪</span>
+                </div>
+                <div className="bid-card-face back">
+                  <span>{whiteVal} ⚪</span>
+                </div>
               </div>
             </div>
           </div>

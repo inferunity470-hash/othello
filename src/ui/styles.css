@@ -1025,6 +1025,8 @@ label.stack {
    face — no absolute positioning, so long numbers can't spill out. */
 .bid-card-face {
   grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
   font-size: 2rem;
   font-weight: 800;
   padding: 0.7rem 0.6rem;
@@ -1032,7 +1034,6 @@ label.stack {
   background: var(--panel-2);
   text-align: center;
   white-space: nowrap;
-  overflow: hidden;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
@@ -1044,8 +1045,6 @@ label.stack {
 
 .bid-card-face.back {
   transform: rotateY(180deg);
-  display: grid;
-  place-items: center;
 }
 
 /* Pure-CSS coin: emoji coins (🪙/🟡) render as tofu on Windows 10. */
@@ -1069,6 +1068,12 @@ label.stack {
 .bid-flip.winner .bid-card-face.back {
   background: linear-gradient(180deg, var(--accent-2), var(--accent));
   color: #2a1c00;
+}
+
+/* Burst on the (unrotated) wrapper — animating transform on the rotated
+   back face would override its rotateY(180deg) and hide the card. */
+.bid-flip.winner {
+  border-radius: 10px;
   animation: winnerBurst 0.7s ease-out forwards;
 }
 
