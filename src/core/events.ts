@@ -43,6 +43,17 @@ export function applyEvent(state: GameState, ev: TurnRecord): GameState {
     // into THIS record at turn-recording time. Apply now.
     if (s.phase === 'PLACING') {
       if (!ev.mover || !ev.move || ev.move === 'PASS') {
+        // Legacy replay (pre "winner places the exhausting turn" rule):
+        // the game ended at resolution with no placement recorded.
+        if (s.players.BLACK.chips === 0 && s.players.WHITE.chips === 0) {
+          return {
+            ...s,
+            phase: 'ENDED',
+            endReason: 'CHIPS_EXHAUSTED',
+            endedAt: ev.timestamp,
+            pendingBids: {},
+          };
+        }
         throw new Error(
           `BIDDING record at turn ${ev.turnNo} missing mover/move after resolution to PLACING`
         );

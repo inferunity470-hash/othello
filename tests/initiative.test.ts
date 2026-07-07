@@ -136,19 +136,23 @@ describe('replay correctness with new rule', () => {
     }
   });
 
-  it('replays a chip-exhaustion path that ends the game', () => {
+  it('replays a chip-exhaustion path where the winner places, then the game ends', () => {
     // BLACK chips=0, WHITE chips=5. WHITE wins the next bid, pays 5 →
-    // both at 0. New rule: game ends immediately (was FINAL_MOVE).
+    // both at 0. Rule: WHITE still places for the turn, then ENDED.
     let s = initGame({ initialChips: { BLACK: 0, WHITE: 5 } });
     expect(s.players.BLACK.chips).toBe(0);
     expect(s.players.WHITE.chips).toBe(5);
     s = setPendingBid(s, 'BLACK', 0);
     s = setPendingBid(s, 'WHITE', 5);
     s = resolvePendingBids(s).state;
+    expect(s.phase).toBe('PLACING');
+    expect(expectedMover(s)).toBe('WHITE');
+    s = placeFirstLegal(s, 'WHITE');
     expect(s.phase).toBe('ENDED');
     expect(s.endReason).toBe('CHIPS_EXHAUSTED');
     expect(s.players.BLACK.chips).toBe(0);
     expect(s.players.WHITE.chips).toBe(0);
+    // WHITE (non-holder) placed → token stays with BLACK
     expect(s.initiativeHolder).toBe('BLACK');
 
     // Replay should produce the same final state
@@ -196,19 +200,23 @@ describe('BidReveal token messaging accuracy (jsdom-free contract)', () => {
     expect(placer).not.toBe(out.state.initiativeHolder);
   });
 
-  it('chip exhaustion entry: bid resolved but game ends immediately', () => {
+  it('chip exhaustion entry: winner places the exhausting turn, then the game ends', () => {
     // Setup BLACK chips=0, WHITE=5. WHITE wins by bidding 5, both reach 0.
-    // New rule: game ends — neither player gets a free placement.
+    // Rule: the winner still places for the turn they paid for; the game
+    // ends right after that placement.
     let s = initGame({ initialChips: { BLACK: 0, WHITE: 5 } });
     s = setPendingBid(s, 'BLACK', 0);
     s = setPendingBid(s, 'WHITE', 5);
     const out = resolvePendingBids(s);
-    expect(out.state.phase).toBe('ENDED');
-    expect(out.state.endReason).toBe('CHIPS_EXHAUSTED');
+    expect(out.state.phase).toBe('PLACING');
     expect(out.resolution.winner).toBe('WHITE');
-    // Initiative holder unchanged at game end (placement-driven token rule
-    // only fires on actual placement, which doesn't happen here).
+    // Initiative holder unchanged until the actual placement.
     expect(out.state.initiativeHolder).toBe('BLACK');
+    const s2 = placeFirstLegal(out.state, 'WHITE');
+    expect(s2.phase).toBe('ENDED');
+    expect(s2.endReason).toBe('CHIPS_EXHAUSTED');
+    // WHITE (non-holder) placed → token stays with BLACK.
+    expect(s2.initiativeHolder).toBe('BLACK');
   });
 });
 

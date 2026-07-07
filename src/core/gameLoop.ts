@@ -34,8 +34,8 @@ export function initGame(options?: Partial<GameOptions>): GameState {
  * Decide the next phase from board + chips alone, ignoring any pending bids.
  * Used after a placement OR at game initialization.
  *
- * Spec: BOTH_NO_MOVES > FREE_MOVE (legalB xor legalW) > ENDED (both at
- * 0 chips) > BIDDING.
+ * Spec: BOTH_NO_MOVES > ENDED (both at 0 chips) > FREE_MOVE
+ * (legalB xor legalW) > BIDDING.
  */
 export function computeAutoPhase(state: GameState): GameState {
   if (state.phase === 'ENDED') return state;
@@ -52,12 +52,10 @@ export function computeAutoPhase(state: GameState): GameState {
       pendingBids: {},
     };
   }
-  if (legalB !== legalW) {
-    return { ...state, phase: 'FREE_MOVE', pendingBids: {} };
-  }
-  // Both have legal moves. If neither can afford to bid, end the game
-  // immediately — neither player should get a "free" final placement
-  // when both are out of chips.
+  // If neither can afford to bid, end the game. This takes priority over
+  // FREE_MOVE: once both are out of chips no further placement happens —
+  // the bid winner's placement for the exhausting turn has already been
+  // applied before this is reached (resolve routes to PLACING first).
   if (state.players.BLACK.chips === 0 && state.players.WHITE.chips === 0) {
     return {
       ...state,
@@ -66,6 +64,9 @@ export function computeAutoPhase(state: GameState): GameState {
       endedAt: Date.now(),
       pendingBids: {},
     };
+  }
+  if (legalB !== legalW) {
+    return { ...state, phase: 'FREE_MOVE', pendingBids: {} };
   }
   return { ...state, phase: 'BIDDING', pendingBids: state.pendingBids ?? {} };
 }
@@ -105,9 +106,10 @@ export interface ResolveOutcome {
  * then decide PLACING / FINAL_MOVE / ENDED accordingly.
  *
  * Spec §3.2:
- *   RESOLVING -> PLACING:    通常 (落札者に合法手あり)
- *   RESOLVING -> FINAL_MOVE: 支払い直後に両者0チップ、かつ保持者に合法手あり
- *   RESOLVING -> ENDED:      支払い直後に両者0チップ、かつ保持者に合法手なし
+ *   RESOLVING -> PLACING: 落札者に合法手あり。支払い直後に両者0チップに
+ *                         なった場合も、そのターンの落札者は着手する
+ *                         (着手後に computeAutoPhase が ENDED にする)
+ *   RESOLVING -> ENDED:   落札者に合法手なし
  */
 export function resolvePendingBids(state: GameState): ResolveOutcome {
   if (state.phase !== 'BIDDING') throw new Error('Not in BIDDING phase');
@@ -133,13 +135,14 @@ export function resolvePendingBids(state: GameState): ResolveOutcome {
 
   let phase: GameState['phase'];
   let endReason: GameState['endReason'] | undefined;
-  if (bothZero) {
-    // Both players are out of chips. End the game outright — neither
-    // side should get a "free" final placement after a tie at zero.
+  if (winnerHasMove) {
+    // Even when this payment exhausted both players' chips, the winner
+    // still places for the turn they just paid for; the game then ends
+    // in applyPlacement via computeAutoPhase (CHIPS_EXHAUSTED).
+    phase = 'PLACING';
+  } else if (bothZero) {
     phase = 'ENDED';
     endReason = 'CHIPS_EXHAUSTED';
-  } else if (winnerHasMove) {
-    phase = 'PLACING';
   } else {
     // Should not normally happen since BIDDING required both have moves.
     phase = 'ENDED';

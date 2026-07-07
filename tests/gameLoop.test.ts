@@ -118,10 +118,11 @@ describe('chip exhaustion', () => {
     expect(s.phase).toBe('PLACING');
   });
 
-  it('ENDED when both chips become 0 simultaneously', () => {
-    // New rule: when bid resolution leaves both at 0 chips, end the
-    // game outright (no FINAL_MOVE). Setup: chips=5 vs 0; BLACK bids 5,
-    // WHITE bids 0 -> BLACK wins, pays 5 -> both at 0 -> ENDED.
+  it('winner still places the turn that exhausts both chips, then ENDED', () => {
+    // Rule: when bid resolution leaves both at 0 chips, the winner still
+    // places for the turn they paid for; the game ends right after.
+    // Setup: chips=5 vs 0; BLACK bids 5, WHITE bids 0 -> BLACK wins,
+    // pays 5 -> both at 0 -> PLACING -> BLACK places -> ENDED.
     let s = initGame({ initialChips: 5 });
     s = { ...s, players: { ...s.players, WHITE: { ...s.players.WHITE, chips: 0 } } };
     s = setPendingBid(s, 'BLACK', 5);
@@ -130,8 +131,16 @@ describe('chip exhaustion', () => {
     s = out.state;
     expect(s.players.BLACK.chips).toBe(0);
     expect(s.players.WHITE.chips).toBe(0);
+    expect(s.phase).toBe('PLACING');
+    expect(expectedMover(s)).toBe('BLACK');
+    const m = legalMoves(s.board, 'BLACK')[0];
+    s = applyPlacement(s, 'BLACK', m.row, m.col);
     expect(s.phase).toBe('ENDED');
     expect(s.endReason).toBe('CHIPS_EXHAUSTED');
+    // The placement was recorded on the same turn record
+    const last = s.history[s.history.length - 1];
+    expect(last.mover).toBe('BLACK');
+    expect(last.move).toEqual({ row: m.row, col: m.col });
   });
 });
 

@@ -7,7 +7,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import { resolveBids } from '../src/core/bidding';
-import { initGame, resolvePendingBids, setPendingBid } from '../src/core/gameLoop';
+import {
+  applyPlacement,
+  initGame,
+  resolvePendingBids,
+  setPendingBid,
+} from '../src/core/gameLoop';
+import { legalMoves } from '../src/core/board';
 
 describe('all-pay auction (resolveBids)', () => {
   it('higher bid wins; both players pay their own bid', () => {
@@ -98,8 +104,13 @@ describe('all-pay auction (gameLoop integration)', () => {
     const out = resolvePendingBids(s);
     expect(out.state.players.BLACK.chips).toBe(0);
     expect(out.state.players.WHITE.chips).toBe(0);
-    // After both reach 0 chips, the game should transition out of BIDDING.
-    // (FINAL_MOVE if holder has a legal move, else ENDED.)
-    expect(['FINAL_MOVE', 'ENDED']).toContain(out.state.phase);
+    // The winner (tie → holder = BLACK) still places the turn they paid
+    // for; the game ends right after that placement.
+    expect(out.state.phase).toBe('PLACING');
+    expect(out.resolution.winner).toBe('BLACK');
+    const m = legalMoves(out.state.board, 'BLACK')[0];
+    const ended = applyPlacement(out.state, 'BLACK', m.row, m.col);
+    expect(ended.phase).toBe('ENDED');
+    expect(ended.endReason).toBe('CHIPS_EXHAUSTED');
   });
 });
