@@ -44,15 +44,17 @@ const OnlineLobby = lazy(() =>
  *
  * - In development (`import.meta.env.DEV`), the online tab is shown by default
  *   so contributors can exercise it locally with `npm run start`.
- * - In production builds the tab is shown only when
- *   `VITE_ONLINE_ENABLED` is the string `'true'`. This lets us deploy the
- *   bundle before WebSocket hosting is finalized and toggle it on without a
- *   rebuild via env override at the host level.
+ * - In production builds the tab is shown when `VITE_ONLINE_ENABLED` is the
+ *   string `'true'`, or when a WebSocket backend is configured via
+ *   `VITE_WS_URL` — a configured backend implies online play is live.
+ *   `VITE_ONLINE_ENABLED='false'` always hides the tab (kill switch).
  */
 const ONLINE_ENABLED: boolean = (() => {
   const raw = import.meta.env.VITE_ONLINE_ENABLED as string | undefined;
   if (raw === 'true') return true;
   if (raw === 'false') return false;
+  const wsUrl = import.meta.env.VITE_WS_URL as string | undefined;
+  if (wsUrl && wsUrl.trim()) return true;
   return Boolean(import.meta.env.DEV);
 })();
 
