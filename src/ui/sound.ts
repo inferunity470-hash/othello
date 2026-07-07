@@ -16,8 +16,6 @@ export type SoundName =
   | 'drumroll' // tension build-up before bids flip open
   | 'stamp' // bid numbers stamp in (cards flip open)
   | 'bidWin' // bid winner decided (short sting)
-  | 'coin' // tie-break coin flip
-  | 'cornerBonus' // chip count went up (e.g. corner bonus)
   | 'gameWin'
   | 'gameLose'
   | 'gameDraw';
@@ -139,19 +137,6 @@ export function play(name: SoundName) {
       seq([
         { at: 0, freq: 587, dur: 0.09, type: 'triangle', gain: 0.5 },
         { at: 0.08, freq: 880, dur: 0.16, type: 'triangle', gain: 0.55 },
-      ]);
-      break;
-    case 'coin':
-      seq([
-        { at: 0, freq: 988, dur: 0.06, type: 'triangle', gain: 0.4 },
-        { at: 0.07, freq: 1319, dur: 0.12, type: 'triangle', gain: 0.4 },
-        { at: 0.16, freq: 988, dur: 0.06, type: 'triangle', gain: 0.3 },
-      ]);
-      break;
-    case 'cornerBonus':
-      seq([
-        { at: 0, freq: 659, dur: 0.1, gain: 0.45 },
-        { at: 0.06, freq: 988, dur: 0.16, gain: 0.45 },
       ]);
       break;
     case 'gameWin':

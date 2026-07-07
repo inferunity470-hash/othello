@@ -137,14 +137,6 @@ export function countStones(board: Board): { BLACK: number; WHITE: number } {
   return { BLACK: b, WHITE: w };
 }
 
-export function detectCornerGain(before: Board, after: Board, mover: Color): number {
-  let count = 0;
-  for (const [r, c] of CONFIG.CORNER_SQUARES) {
-    if (before[r][c] !== mover && after[r][c] === mover) count++;
-  }
-  return count;
-}
-
 export function isCornerSquare(row: number, col: number): boolean {
   for (const [r, c] of CONFIG.CORNER_SQUARES) {
     if (r === row && c === col) return true;

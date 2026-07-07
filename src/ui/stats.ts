@@ -11,12 +11,11 @@ const MAX_RECORDS = 100;
 export interface GameRecord {
   endedAt: number;
   durationMs: number;
-  options: { initialChips: number | { BLACK: number; WHITE: number }; cornerBonus: number };
+  options: { initialChips: number | { BLACK: number; WHITE: number } };
   result: GameResult;
   turns: number;
   myColor?: 'BLACK' | 'WHITE' | 'SPECTATE';
   avgBid: { BLACK: number; WHITE: number };
-  cornersTaken: { BLACK: number; WHITE: number };
   reverseAuctions: { BLACK: number; WHITE: number };
   tieBids: number;
 }
@@ -50,8 +49,6 @@ export function recordGame(
     bidCountW = 0,
     bidSumB = 0,
     bidSumW = 0;
-  let cornersB = 0,
-    cornersW = 0;
   let reverseB = 0,
     reverseW = 0;
   let tieBids = 0;
@@ -70,8 +67,6 @@ export function recordGame(
         reverseB++;
       }
     }
-    if (t.cornerBonusTo === 'BLACK') cornersB++;
-    if (t.cornerBonusTo === 'WHITE') cornersW++;
     prevHolder = t.initiativeAfter;
   }
   const record: GameRecord = {
@@ -79,7 +74,6 @@ export function recordGame(
     durationMs: (state.endedAt ?? Date.now()) - state.startedAt,
     options: {
       initialChips: state.options.initialChips,
-      cornerBonus: state.options.cornerBonus,
     },
     result,
     turns,
@@ -88,7 +82,6 @@ export function recordGame(
       BLACK: bidCountB ? Math.round(bidSumB / bidCountB) : 0,
       WHITE: bidCountW ? Math.round(bidSumW / bidCountW) : 0,
     },
-    cornersTaken: { BLACK: cornersB, WHITE: cornersW },
     reverseAuctions: { BLACK: reverseB, WHITE: reverseW },
     tieBids,
   };
@@ -117,7 +110,6 @@ export interface AggregatedStats {
   draws: number;
   myAvgBidBlack: number;
   myAvgBidWhite: number;
-  myCornerRate: number;
   myReverseAuctionRate: number;
   avgTurns: number;
   avgDurationSec: number;
@@ -131,8 +123,7 @@ export function aggregate(records: GameRecord[]): AggregatedStats {
   let bidB = 0,
     bidW = 0,
     cnt = 0;
-  let myCorners = 0,
-    myReverse = 0;
+  let myReverse = 0;
   let totalTurns = 0,
     totalDuration = 0;
   for (const r of records) {
@@ -147,7 +138,6 @@ export function aggregate(records: GameRecord[]): AggregatedStats {
     totalTurns += r.turns;
     totalDuration += r.durationMs;
     if (r.myColor && r.myColor !== 'SPECTATE') {
-      myCorners += r.cornersTaken[r.myColor];
       myReverse += r.reverseAuctions[r.myColor];
     }
   }
@@ -180,7 +170,6 @@ export function aggregate(records: GameRecord[]): AggregatedStats {
     draws,
     myAvgBidBlack: cnt ? Math.round(bidB / cnt) : 0,
     myAvgBidWhite: cnt ? Math.round(bidW / cnt) : 0,
-    myCornerRate: cnt ? myCorners / cnt : 0,
     myReverseAuctionRate: cnt ? myReverse / cnt : 0,
     avgTurns: cnt ? Math.round(totalTurns / cnt) : 0,
     avgDurationSec: cnt ? Math.round(totalDuration / cnt / 1000) : 0,

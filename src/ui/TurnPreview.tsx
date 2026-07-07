@@ -55,11 +55,6 @@ export function TurnPreview({ finalState, turnNo, onClose }: Props) {
                   {turn.flipped && <> (反転 {turn.flipped.length})</>}
                 </>
               )}
-              {turn.cornerBonusTo && (
-                <>
-                  {' ・ '}+角 {turn.cornerBonusCount ?? 1}
-                </>
-              )}
             </div>
           )}
           <div className="row" style={{ justifyContent: 'flex-end' }}>

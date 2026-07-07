@@ -80,12 +80,6 @@ export function ReplayView({ finalState, onClose }: Props) {
                     {turn.flipped && (
                       <span className="muted">(反転 {turn.flipped.length})</span>
                     )}
-                    {turn.cornerBonusTo && (
-                      <span style={{ color: 'var(--good)' }}>
-                        {' '}
-                        +角{turn.cornerBonusCount ?? 1}
-                      </span>
-                    )}
                   </div>
                 )}
                 <div className="muted">

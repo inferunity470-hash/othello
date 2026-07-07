@@ -74,12 +74,6 @@ export function App() {
   const [mode, setMode] = useState<Mode>({ kind: 'lobby' });
   const [help, setHelp] = useState(false);
   const [tour, setTour] = useState(false);
-  const [colorBlind, setColorBlind] = useState<boolean>(
-    () => getPref('cb', 'off') === 'on'
-  );
-  const [reducedMotion, setReducedMotion] = useState<boolean>(
-    () => getPref('motion', 'auto') === 'reduced'
-  );
   const [sound, setSound] = useState<boolean>(() => getPref('sound', 'on') !== 'off');
 
   // Sync sound preference with engine
@@ -93,20 +87,6 @@ export function App() {
     if (shouldShowTour()) setTour(true);
   }, []);
 
-  // Apply prefs to the document root
-  useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.cb = colorBlind ? 'on' : 'off';
-    setPref('cb', colorBlind ? 'on' : 'off');
-  }, [colorBlind]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (reducedMotion) root.dataset.motion = 'reduced';
-    else delete root.dataset.motion;
-    setPref('motion', reducedMotion ? 'reduced' : 'auto');
-  }, [reducedMotion]);
-
   return (
     <div className="app">
       <SkipLink to="main-content" />
@@ -115,22 +95,6 @@ export function App() {
           <span className="accent">⚫⚪</span> {t('appTitle')}
         </h1>
         <div className="row" style={{ gap: '0.4rem' }}>
-          <button
-            className={colorBlind ? 'primary' : 'ghost'}
-            onClick={() => setColorBlind(b => !b)}
-            aria-pressed={colorBlind}
-            title="色覚配慮モード(高コントラスト・縁取り)"
-          >
-            🎨 色覚配慮
-          </button>
-          <button
-            className={reducedMotion ? 'primary' : 'ghost'}
-            onClick={() => setReducedMotion(m => !m)}
-            aria-pressed={reducedMotion}
-            title="アニメーションを抑える"
-          >
-            🐢 動き軽減
-          </button>
           <button
             className={sound ? 'primary' : 'ghost'}
             onClick={() => setSound(s => !s)}
@@ -284,21 +248,6 @@ function Lobby({
                 setOptions({
                   ...options,
                   initialChips: parseInt(e.target.value, 10) || 0,
-                })
-              }
-            />
-          </label>
-          <label className="stack">
-            <span>角ボーナス</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={options.cornerBonus}
-              onChange={e =>
-                setOptions({
-                  ...options,
-                  cornerBonus: parseInt(e.target.value, 10) || 0,
                 })
               }
             />
@@ -592,7 +541,7 @@ function LocalGame({ options, onExit }: LocalGameProps) {
             title={`🎯 ${placer === 'BLACK' ? '黒' : '白'} の着手フェーズ`}
             description={
               state.phase === 'FINAL_MOVE'
-                ? '最終1手です(角ボーナスは適用されません)'
+                ? '最終1手です。'
                 : state.phase === 'FREE_MOVE'
                   ? '相手に合法手がないため、無償で着手します。'
                   : 'ハイライトされたマスをタップしてください。'

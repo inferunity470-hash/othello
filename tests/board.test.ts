@@ -3,7 +3,6 @@ import {
   applyMove,
   countStones,
   createInitialBoard,
-  detectCornerGain,
   hasLegalMove,
   isCornerSquare,
   legalMoves,
@@ -87,14 +86,6 @@ describe('board basics', () => {
       const found = moves.some(m => m.row === 3 && m.col === 3);
       expect(found, `dir ${dr},${dc}`).toBe(true);
     }
-  });
-
-  it('detectCornerGain returns 1 when corner becomes mine', () => {
-    const before: Board = Array.from({ length: 8 }, () => Array(8).fill(null));
-    const after = before.map(r => r.slice());
-    after[0][0] = 'BLACK';
-    expect(detectCornerGain(before, after, 'BLACK')).toBe(1);
-    expect(detectCornerGain(before, after, 'WHITE')).toBe(0);
   });
 
   it('isCornerSquare', () => {

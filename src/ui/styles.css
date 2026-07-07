@@ -1047,24 +1047,6 @@ label.stack {
   transform: rotateY(180deg);
 }
 
-/* Pure-CSS coin: emoji coins (🪙/🟡) render as tofu on Windows 10. */
-.coin-disc {
-  display: inline-block;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffe9a8, #f5b041 55%, #c98a1e);
-  border: 2px solid #a9761a;
-  vertical-align: -0.3rem;
-}
-
-.coin-disc.coin-disc-sm {
-  width: 1.05rem;
-  height: 1.05rem;
-  border-width: 1.5px;
-  vertical-align: -0.12rem;
-}
-
 .bid-flip.winner .bid-card-face.back {
   background: linear-gradient(180deg, var(--accent-2), var(--accent));
   color: #2a1c00;
@@ -1111,17 +1093,21 @@ label.stack {
   }
 }
 
-.versus.coin-spin {
-  animation: coinSpin 0.65s linear;
+/* Tie-break reveal: pulses the initiative-token glyph (★, same motif as
+   the HUD holder badge) instead of a coin flip — the rule is that the
+   token holder wins ties, not a random flip. */
+.versus.token-pulse {
+  animation: tokenPulse 0.65s ease-in-out;
   font-size: 1.7rem;
 }
 
-@keyframes coinSpin {
-  from {
-    transform: rotateY(0deg);
+@keyframes tokenPulse {
+  0%,
+  100% {
+    transform: scale(1);
   }
-  to {
-    transform: rotateY(720deg);
+  50% {
+    transform: scale(1.35);
   }
 }
 
@@ -1539,44 +1525,6 @@ label.stack {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001s !important;
   }
-}
-
-:root[data-motion='reduced'] *,
-:root[data-motion='reduced'] *::before,
-:root[data-motion='reduced'] *::after {
-  animation-duration: 0.001s !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001s !important;
-}
-
-/* Color-blind / high-contrast mode (data-cb attribute on root) */
-:root[data-cb='on'] .disc.black {
-  background: #000 !important;
-  border: 3px solid #ffd166 !important;
-}
-:root[data-cb='on'] .disc.white {
-  background: #fff !important;
-  border: 3px solid #4dadff !important;
-}
-:root[data-cb='on'] .disc-mark {
-  font-size: 0.95rem !important;
-  font-weight: 800;
-}
-:root[data-cb='on'] .disc.black .disc-mark {
-  color: #ffd166 !important;
-}
-:root[data-cb='on'] .disc.white .disc-mark {
-  color: #1f2438 !important;
-}
-:root[data-cb='on'] .swatch.black {
-  border: 3px solid #ffd166 !important;
-}
-:root[data-cb='on'] .swatch.white {
-  border: 3px solid #4dadff !important;
-}
-:root[data-cb='on'] .cell.legal-hint::after {
-  background: #ffd166 !important;
-  border-color: #ff6b35 !important;
 }
 
 /* Chip change pulse */
@@ -2338,22 +2286,11 @@ kbd {
   color: var(--muted);
   min-width: 2.4rem;
 }
-.review-corner span:last-child {
-  color: var(--good);
-}
 .review-overpay span:last-child {
   color: var(--danger);
 }
 .review-reverse span:last-child {
   color: var(--info);
-}
-
-/* --- Reduced motion --- */
-:root[data-motion='reduced'] .ai-move-pulse,
-:root[data-motion='reduced'] .token-transfer-icon,
-:root[data-motion='reduced'] .chip-transfer-icon,
-:root[data-motion='reduced'] .ai-thinking-bar-fill {
-  animation-duration: 0.001s !important;
 }
 
 /* --- Mobile touch tuning --- */

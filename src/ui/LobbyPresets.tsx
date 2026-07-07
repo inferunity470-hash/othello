@@ -18,7 +18,6 @@ export const LOBBY_PRESETS: LobbyPreset[] = [
     options: {
       ...DEFAULT_OPTIONS,
       initialChips: 50,
-      cornerBonus: 5,
       zeroBidStreakLimit: 3,
       auctionType: 'first-price',
     },
@@ -38,18 +37,16 @@ export const LOBBY_PRESETS: LobbyPreset[] = [
     options: {
       ...DEFAULT_OPTIONS,
       initialChips: 500,
-      cornerBonus: 20,
     },
   },
   {
     key: 'oni',
     emoji: '😈',
     label: '鬼仕様',
-    description: '200 chips + ストリーク 3 + 角 +15',
+    description: '200 chips + ストリーク 3',
     options: {
       ...DEFAULT_OPTIONS,
       initialChips: 200,
-      cornerBonus: 15,
       zeroBidStreakLimit: 3,
     },
   },

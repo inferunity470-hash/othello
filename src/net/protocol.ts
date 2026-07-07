@@ -74,7 +74,6 @@ export type ServerMsg =
       row: number;
       col: number;
       flipped: Array<[number, number]>;
-      cornerBonusTo?: Color;
     }
   | { t: 'TURN_RECORDED'; record: TurnRecord }
   | { t: 'END'; result: GameResult }

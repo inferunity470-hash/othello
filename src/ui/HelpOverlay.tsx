@@ -67,10 +67,6 @@ export function HelpOverlay({ onClose }: Props) {
             <h3>オプション</h3>
             <ul>
               <li>
-                角ボーナス: 角を取った瞬間にチップ +<code>cornerBonus</code> (デフォルト
-                10)。最終1手は対象外。
-              </li>
-              <li>
                 ゼロ入札制限: 連続0入札が <code>N</code> 回続くと最小入札 1 を強制。
               </li>
             </ul>

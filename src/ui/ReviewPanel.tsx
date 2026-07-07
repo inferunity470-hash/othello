@@ -8,7 +8,7 @@ interface Props {
 }
 
 interface Insight {
-  kind: 'corner' | 'overpay' | 'reverse' | 'tieLost';
+  kind: 'overpay' | 'reverse' | 'tieLost';
   turn: TurnRecord;
   detail: string;
 }
@@ -46,13 +46,6 @@ export function ReviewPanel({ state, blunderPct = 0.6 }: Props) {
 function buildInsights(state: GameState, blunderPct: number): Insight[] {
   const out: Insight[] = [];
   for (const t of state.history) {
-    if (t.cornerBonusTo) {
-      out.push({
-        kind: 'corner',
-        turn: t,
-        detail: `${t.cornerBonusTo === 'BLACK' ? '黒' : '白'} が角を獲得 (+${t.cornerBonusCount ?? 1})`,
-      });
-    }
     if (t.bids && t.payment != null && t.winner) {
       const loserBid = t.bids[t.winner === 'BLACK' ? 'WHITE' : 'BLACK'];
       const winnerBid = t.bids[t.winner];

@@ -60,11 +60,6 @@ export function GameLog({ state, onJumpTo }: Props) {
                   {t.tieBroken ? '*' : ''})
                 </span>
               )}
-              {t.cornerBonusTo && (
-                <span style={{ marginLeft: '0.3rem', color: 'var(--good)' }}>
-                  +角{t.cornerBonusCount ?? 1}
-                </span>
-              )}
               {t.phaseAtStart === 'FREE_MOVE' && (
                 <span
                   style={{

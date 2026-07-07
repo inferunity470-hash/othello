@@ -88,8 +88,10 @@ describe('integration: full games', () => {
     expect(s.phase).toBe('ENDED');
   });
 
-  it('T7/T9 corner bonus: chips increase when capturing a corner', () => {
-    let s = initGame({ initialChips: 10, cornerBonus: 10 });
+  it('T7/T9 corner capture no longer grants a chip bonus', () => {
+    // The "corner bonus" mechanic has been removed entirely: capturing a
+    // corner only affects the board, never the chip count.
+    let s = initGame({ initialChips: 10 });
     // Construct a board where BLACK can take a corner immediately
     // Use a hand-crafted board.
     s.board = Array.from({ length: 8 }, () => Array(8).fill(null));
@@ -111,33 +113,8 @@ describe('integration: full games', () => {
     s = out.state;
     // Black wins, chips = 9. Place at (0,0).
     s = applyPlacement(s, 'BLACK', 0, 0);
-    // chips: 10 - 1 paid + 10 corner bonus = 19
-    expect(s.players.BLACK.chips).toBe(19);
-  });
-
-  it('T10: corner-recapture grants bonus', () => {
-    let s = initGame({ initialChips: 10, cornerBonus: 10 });
-    s.board = Array.from({ length: 8 }, () => Array(8).fill(null));
-    // White owns the corner (0,0). Black plays at (0,2) flipping (0,1) but not corner.
-    // Then black plays at (1,0) flipping (0,0)? That requires sandwich.
-    // Simpler: set up so a single black move flips a corner that was white's.
-    // BLACK at (2,0), white at (1,0) and white at (0,0); BLACK plays at... wait can't put on (0,0).
-    // Alternative: corners can only flip via diagonal. Let's set up
-    // (0,0)=W, (1,1)=W, (2,2)=B; black plays at (3,3)? That sandwiches diagonally.
-    // BLACK move at row,col places stone there; checks 8 dirs.
-    // For (3,3) BLACK to flip (2,2)... wait (2,2) is already black, it doesn't flip.
-    // Let me retry. To flip (0,0) we need a sandwich. (0,0) is a CORNER and has no neighbor on outer side.
-    // So a corner can be flipped only along a row/col/diagonal going INWARD.
-    // E.g. (0,0)=W, (0,1)=W, ..., (0,k)=W, (0,k+1)=BLACK after move? That would require BLACK to move at (0,k+1)
-    // and have a piece on the OTHER side of (0,0) which doesn't exist (off board).
-    // Actually, no. The sandwich rule: when BLACK plays at X, in some direction there's a sequence of W's
-    // followed by B. So to flip (0,0)=W: BLACK plays at some (0,k); going from (0,k) toward (0,0) we have W's
-    // at (0,k-1),...,(0,1),(0,0) and need a black BEYOND (0,0). But (0,-1) doesn't exist.
-    // So a corner W cannot be flipped via a row/col move that goes through it; we'd need the line to extend BEYOND.
-    // Conclusion: corners, once captured, are stable. Cannot be flipped.
-    // So skip this test (corner stability is a known othello property). The spec E14 is about the case where
-    // the corner is captured by *placing on it*. This was already covered in T9. Mark as a placeholder.
-    expect(true).toBe(true);
+    // chips: 10 - 1 paid, no bonus for capturing the corner = 9
+    expect(s.players.BLACK.chips).toBe(9);
   });
 
   it('T11: zero-bid-streak limit forces minBid=1', () => {

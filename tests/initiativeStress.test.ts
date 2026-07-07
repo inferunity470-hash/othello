@@ -69,12 +69,11 @@ describe('replay invariant (randomised)', () => {
   // 32 seeds × 4 option combos = 128 games. Each must terminate & replay
   // back to identical board/players/initiativeHolder.
   const optionCombos: Array<Partial<GameOptions>> = [
-    { initialChips: 30, cornerBonus: 10, auctionType: 'first-price' },
-    { initialChips: 60, cornerBonus: 0, auctionType: 'first-price' },
-    { initialChips: 40, cornerBonus: 10, auctionType: 'second-price' },
+    { initialChips: 30, auctionType: 'first-price' },
+    { initialChips: 60, auctionType: 'first-price' },
+    { initialChips: 40, auctionType: 'second-price' },
     {
       initialChips: { BLACK: 20, WHITE: 80 },
-      cornerBonus: 10,
       auctionType: 'first-price',
     },
   ];
@@ -118,7 +117,7 @@ describe('replay invariant (randomised)', () => {
     const final = playFullGame({
       blackLevel: 'beginner',
       whiteLevel: 'beginner',
-      options: { initialChips: 50, cornerBonus: 10 },
+      options: { initialChips: 50 },
       seed: 12345,
     });
     let prevHolder: import('../src/core/types').Color = 'BLACK';

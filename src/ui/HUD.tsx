@@ -3,7 +3,6 @@ import { Color, GameState, initialChipsFor } from '../core/types';
 import { countStones } from '../core/board';
 import { currentMinBid } from '../core/bidding';
 import { expectedMover } from '../core/gameLoop';
-import { play as playSound } from './sound';
 
 interface Props {
   state: GameState;
@@ -122,8 +121,6 @@ function PlayerCard({
     if (diff !== 0) {
       setDelta(diff);
       setPulseClass(diff > 0 ? 'chip-pulse-up' : 'chip-pulse-down');
-      // A positive delta typically means a corner bonus was just awarded.
-      if (diff > 0) playSound('cornerBonus');
       const t = setTimeout(() => {
         setDelta(null);
         setPulseClass('');

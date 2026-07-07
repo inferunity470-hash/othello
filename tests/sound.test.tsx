@@ -19,7 +19,6 @@ describe('sound module', () => {
     expect(() => play('flip')).not.toThrow();
     expect(() => play('bid')).not.toThrow();
     expect(() => play('reveal')).not.toThrow();
-    expect(() => play('cornerBonus')).not.toThrow();
     expect(() => play('gameWin')).not.toThrow();
     expect(() => play('gameLose')).not.toThrow();
     expect(() => play('gameDraw')).not.toThrow();

@@ -29,15 +29,19 @@ interface Props {
 /**
  * Reveal runs as a staged sequence to build tension:
  *   sealed  — both bids face-down, cards vibrate, drumroll (~0.9s)
- *   open    — cards flip, numbers stamp in (+ coin beat on ties)
+ *   open    — cards flip, numbers stamp in (+ extra beat on ties)
  *   verdict — winner bursts, payment / token info slides in
  * With prefers-reduced-motion the sequence collapses straight to `verdict`.
+ *
+ * On a tie, the rule is NOT a coin flip: the initiative-token holder always
+ * wins (see `resolveBids` in core/bidding.ts). The extra beat below just
+ * gives that reveal a beat of tension; it doesn't represent randomness.
  */
 type RevealStage = 'sealed' | 'open' | 'verdict';
 
 const FLIP_AT_MS = 900;
 const VERDICT_DELAY_MS = 750; // after flip
-const TIE_COIN_MS = 650; // extra beat between flip and verdict on ties
+const TIE_BEAT_MS = 650; // extra beat between flip and verdict on ties
 
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -102,7 +106,7 @@ export function BidReveal({
     }
     playSound('drumroll');
     const verdictAt =
-      FLIP_AT_MS + (tieBroken ? TIE_COIN_MS : 0) + VERDICT_DELAY_MS;
+      FLIP_AT_MS + (tieBroken ? TIE_BEAT_MS : 0) + VERDICT_DELAY_MS;
     const timers: ReturnType<typeof setTimeout>[] = [
       setTimeout(() => {
         setStage('open');
@@ -114,11 +118,6 @@ export function BidReveal({
       }, verdictAt),
       setTimeout(onClose, verdictAt + autoCloseMs),
     ];
-    if (tieBroken) {
-      timers.push(
-        setTimeout(() => playSound('coin'), FLIP_AT_MS + 150)
-      );
-    }
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoCloseMs, onClose, reduced, tieBroken]);
@@ -177,9 +176,11 @@ export function BidReveal({
                 </div>
               </div>
             </div>
-            <div className={`versus ${tieBroken && opened && !verdict ? 'coin-spin' : ''}`}>
+            <div className={`versus ${tieBroken && opened && !verdict ? 'token-pulse' : ''}`}>
               {tieBroken && opened && !verdict ? (
-                <span className="coin-disc" aria-hidden="true" />
+                <span aria-hidden="true" style={{ color: 'var(--accent)' }}>
+                  ★
+                </span>
               ) : (
                 'VS'
               )}
@@ -200,8 +201,10 @@ export function BidReveal({
               <div className="bid-verdict-in">
                 {tieBroken ? (
                   <>
-                    <span className="coin-disc coin-disc-sm" aria-hidden="true" />{' '}
-                    同額 →{' '}
+                    <strong aria-hidden="true" style={{ color: 'var(--accent)' }}>
+                      ★
+                    </strong>{' '}
+                    同額 → 先手権保持者の{' '}
                   </>
                 ) : (
                   '🏆 '
@@ -239,7 +242,9 @@ export function BidReveal({
               </div>
             ) : (
               <div className="muted">
-                {opened && tieBroken ? '同額! コイントスで決着...' : '開示中...'}
+                {opened && tieBroken
+                  ? '同額! 先手権保持者が手番を取得...'
+                  : '開示中...'}
               </div>
             )}
           </div>

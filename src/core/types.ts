@@ -13,7 +13,6 @@ export interface GameOptions {
    * Spec §17.1
    */
   initialChips: number | { BLACK: number; WHITE: number };
-  cornerBonus: number;
   zeroBidStreakLimit: number | null;
   turnTimeoutSec: number | null;
   /**
@@ -65,8 +64,6 @@ export interface TurnRecord {
   mover?: Color;
   move?: { row: number; col: number } | 'PASS';
   flipped?: Array<[number, number]>;
-  cornerBonusTo?: Color;
-  cornerBonusCount?: number;
   initiativeAfter: Color;
   chipsAfter: { BLACK: number; WHITE: number };
   timestamp: number;
@@ -83,7 +80,6 @@ export interface GameResult {
 export const CONFIG = {
   BOARD_SIZE: 8,
   DEFAULT_INITIAL_CHIPS: 200,
-  DEFAULT_CORNER_BONUS: 10,
   CORNER_SQUARES: [
     [0, 0],
     [0, 7],
@@ -94,7 +90,6 @@ export const CONFIG = {
 
 export const DEFAULT_OPTIONS: GameOptions = {
   initialChips: CONFIG.DEFAULT_INITIAL_CHIPS,
-  cornerBonus: CONFIG.DEFAULT_CORNER_BONUS,
   zeroBidStreakLimit: null,
   turnTimeoutSec: null,
   auctionType: 'all-pay',

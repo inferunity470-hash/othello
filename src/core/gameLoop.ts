@@ -8,13 +8,7 @@ import {
   initialChipsFor,
   opponentOf,
 } from './types';
-import {
-  applyMove,
-  createInitialBoard,
-  detectCornerGain,
-  hasLegalMove,
-  legalMoves,
-} from './board';
+import { applyMove, createInitialBoard, hasLegalMove, legalMoves } from './board';
 import { currentMinBid, resolveBids, validateBid } from './bidding';
 
 export function initGame(options?: Partial<GameOptions>): GameState {
@@ -197,7 +191,6 @@ export function resolvePendingBids(state: GameState): ResolveOutcome {
 
 /**
  * Apply a stone placement to the current state.
- * Spec §6.5: corner bonus does NOT apply during FINAL_MOVE (§7.2).
  */
 export function applyPlacement(
   state: GameState,
@@ -220,14 +213,10 @@ export function applyPlacement(
   const before = state.board;
   const { newBoard, flipped } = applyMove(before, mover, row, col);
 
-  const cornerCount = detectCornerGain(before, newBoard, mover);
-  const applyBonus = state.phase !== 'FINAL_MOVE'; // §7.2 final move = no bonus
-  const bonus = applyBonus ? cornerCount * state.options.cornerBonus : 0;
   const newPlayers = {
     BLACK: { ...state.players.BLACK },
     WHITE: { ...state.players.WHITE },
   };
-  if (bonus > 0) newPlayers[mover].chips += bonus;
 
   // Initiative-token transfer rule:
   //   - If the mover currently holds the token, it transfers to the opponent.
@@ -244,10 +233,6 @@ export function applyPlacement(
     last.mover = mover;
     last.move = { row, col };
     last.flipped = flipped;
-    if (bonus > 0) {
-      last.cornerBonusTo = mover;
-      last.cornerBonusCount = cornerCount;
-    }
     last.chipsAfter = {
       BLACK: newPlayers.BLACK.chips,
       WHITE: newPlayers.WHITE.chips,
@@ -261,8 +246,6 @@ export function applyPlacement(
       mover,
       move: { row, col },
       flipped,
-      cornerBonusTo: bonus > 0 ? mover : undefined,
-      cornerBonusCount: bonus > 0 ? cornerCount : undefined,
       initiativeAfter: newInitiativeHolder,
       chipsAfter: {
         BLACK: newPlayers.BLACK.chips,

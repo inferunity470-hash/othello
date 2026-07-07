@@ -97,7 +97,7 @@ describe('Tour', () => {
 
 describe('serialize: JSON export/import', () => {
   it('exportGame + importGame yields equivalent board and chips', () => {
-    let s = initGame({ initialChips: 50, cornerBonus: 10 });
+    let s = initGame({ initialChips: 50 });
     s = setPendingBid(s, 'BLACK', 5);
     s = setPendingBid(s, 'WHITE', 3);
     s = resolvePendingBids(s).state;
@@ -122,22 +122,6 @@ describe('serialize: JSON export/import', () => {
 });
 
 describe('App: header toggles', () => {
-  it('color-blind toggle updates root data attribute', () => {
-    const { getByText } = render(<App />);
-    fireEvent.click(getByText(/色覚配慮/));
-    expect(document.documentElement.dataset.cb).toBe('on');
-    fireEvent.click(getByText(/色覚配慮/));
-    expect(document.documentElement.dataset.cb).toBe('off');
-  });
-
-  it('reduced motion toggle updates root data attribute', () => {
-    const { getByText } = render(<App />);
-    fireEvent.click(getByText(/動き軽減/));
-    expect(document.documentElement.dataset.motion).toBe('reduced');
-    fireEvent.click(getByText(/動き軽減/));
-    expect(document.documentElement.dataset.motion).toBeUndefined();
-  });
-
   it('tour button reopens the tour overlay', () => {
     const { getByText, queryByText } = render(<App />);
     // First load fired the tour automatically — close it

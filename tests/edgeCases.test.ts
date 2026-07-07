@@ -8,7 +8,7 @@ import {
   setPendingBid,
   skipFinalMoveIfNoLegal,
 } from '../src/core/gameLoop';
-import { detectCornerGain, hasLegalMove, legalMoves } from '../src/core/board';
+import { hasLegalMove, legalMoves } from '../src/core/board';
 import { determineWinner } from '../src/core/scoring';
 import { Board, GameState } from '../src/core/types';
 
@@ -127,27 +127,11 @@ describe('edge cases E1-E15', () => {
     expect(s.zeroBidStreak).toBe(0);
   });
 
-  it('E13: simultaneous double-corner gain doubles bonus', () => {
-    let s = initGame({ initialChips: 5, cornerBonus: 10 });
-    // Construct board where one move flips two corners.
-    // Place stones such that BLACK move at (0,7) flips along (0,...,0) AND along col?
-    // Actually we'll construct by placing pieces on bottom rows for diagonal.
-    // Setup: BLACK at (3,4)... too complex. Simplify via direct placement:
-    // Use a small synthetic test by manually checking detectCornerGain
-    const before: Board = Array.from({ length: 8 }, () => Array(8).fill(null));
-    const after: Board = before.map(r => r.slice());
-    after[0][0] = 'BLACK';
-    after[7][7] = 'BLACK';
-    // detectCornerGain should return 2
-    expect(detectCornerGain(before, after, 'BLACK')).toBe(2);
-  });
-
-  it('FINAL_MOVE phase does NOT grant corner bonus (when manually entered)', () => {
+  it('FINAL_MOVE phase transitions straight to ENDED (chips exhausted)', () => {
     // FINAL_MOVE is no longer auto-entered when both chips reach 0 (the
     // game now ends outright in that case). The phase still exists for
-    // legacy / manual routing, and its semantics — no corner bonus —
-    // are preserved.
-    let s = initGame({ initialChips: 0, cornerBonus: 100 });
+    // legacy / manual routing.
+    let s = initGame({ initialChips: 0 });
     const b: Board = emptyBoard();
     b[0][1] = 'WHITE';
     b[0][2] = 'BLACK';
@@ -160,7 +144,7 @@ describe('edge cases E1-E15', () => {
     s = applyPlacement(s, 'BLACK', 0, 0);
     expect(s.phase).toBe('ENDED');
     expect(s.endReason).toBe('CHIPS_EXHAUSTED');
-    // No corner bonus applied
+    // Chips never increase; still exhausted after the final placement.
     expect(s.players.BLACK.chips).toBe(0);
   });
 

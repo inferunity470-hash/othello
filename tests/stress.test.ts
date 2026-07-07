@@ -18,7 +18,6 @@ function playGame(
   initialChips: number,
   seed: number,
   options: Partial<{
-    cornerBonus: number;
     zeroBidStreakLimit: number | null;
     auctionType: 'first-price' | 'second-price' | 'all-pay';
   }> = {}
@@ -26,7 +25,6 @@ function playGame(
   const rng = makeRng(seed);
   let s = initGame({
     initialChips,
-    cornerBonus: options.cornerBonus ?? 10,
     zeroBidStreakLimit: options.zeroBidStreakLimit ?? null,
     auctionType: options.auctionType ?? 'all-pay',
   });
@@ -86,13 +84,6 @@ describe('stress: many random games', () => {
   it('with zeroBidStreakLimit = 2, games still terminate', () => {
     for (let seed = 200; seed <= 205; seed++) {
       const s = playGame('beginner', 'beginner', 50, seed, { zeroBidStreakLimit: 2 });
-      expect(s.phase).toBe('ENDED');
-    }
-  });
-
-  it('with cornerBonus = 0, games terminate', () => {
-    for (let seed = 300; seed <= 305; seed++) {
-      const s = playGame('beginner', 'beginner', 50, seed, { cornerBonus: 0 });
       expect(s.phase).toBe('ENDED');
     }
   });

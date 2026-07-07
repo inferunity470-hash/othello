@@ -360,19 +360,6 @@ export function OnlineLobby({ onExit }: Props) {
               />
             </label>
             <label className="stack">
-              <span>角ボーナス</span>
-              <input
-                type="number"
-                value={options.cornerBonus}
-                onChange={e =>
-                  setOptions({
-                    ...options,
-                    cornerBonus: parseInt(e.target.value, 10) || 0,
-                  })
-                }
-              />
-            </label>
-            <label className="stack">
               <span>連続0入札制限</span>
               <input
                 type="number"

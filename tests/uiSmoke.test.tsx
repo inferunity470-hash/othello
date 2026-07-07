@@ -146,7 +146,7 @@ describe('UI smoke (jsdom)', () => {
     const onClose = vi.fn();
     const { getByText, unmount } = render(<HelpOverlay onClose={onClose} />);
     expect(getByText(/ビッド式オセロ ルール/)).toBeTruthy();
-    expect(getByText(/角ボーナス/)).toBeTruthy();
+    expect(getByText(/ゼロ入札制限/)).toBeTruthy();
     fireEvent.click(getByText('閉じる'));
     expect(onClose).toHaveBeenCalled();
     unmount();

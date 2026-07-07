@@ -409,7 +409,6 @@ wss.on('connection', ws => {
         row: msg.row | 0,
         col: msg.col | 0,
         flipped: last?.flipped ?? [],
-        cornerBonusTo: last?.cornerBonusTo,
       });
       if (last) broadcast(room, { t: 'TURN_RECORDED', record: last });
       if (room.state.phase === 'ENDED') {

@@ -8,7 +8,7 @@ interface Props {
 
 /**
  * Modal dashboard showing aggregated career stats: win rate, average bid,
- * corner rate, longest streak, last 10 games. Backed by localStorage via
+ * longest streak, last 10 games. Backed by localStorage via
  * `stats.ts`. Includes a clear-history button.
  */
 export function StatsDashboard({ onClose }: Props) {
@@ -61,10 +61,6 @@ export function StatsDashboard({ onClose }: Props) {
                 <Stat
                   label="平均入札 (黒/白)"
                   value={`${stats.myAvgBidBlack} / ${stats.myAvgBidWhite}`}
-                />
-                <Stat
-                  label="角獲得 / 局"
-                  value={stats.myCornerRate.toFixed(2)}
                 />
                 <Stat
                   label="リバース / 局"

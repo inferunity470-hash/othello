@@ -348,7 +348,6 @@ function createInitialState(board: Board) {
     zeroBidStreak: 0,
     options: {
       initialChips: 100,
-      cornerBonus: 10,
       zeroBidStreakLimit: null,
       turnTimeoutSec: null,
       auctionType: 'first-price' as const,

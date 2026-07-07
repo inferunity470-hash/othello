@@ -13,7 +13,7 @@ function rec(
   return {
     endedAt: Date.now(),
     durationMs: 1000,
-    options: { initialChips: 200, cornerBonus: 10 },
+    options: { initialChips: 200 },
     result: {
       winner,
       stones: { BLACK: 32, WHITE: 32 },
@@ -23,7 +23,6 @@ function rec(
     turns: 60,
     myColor,
     avgBid: { BLACK: 10, WHITE: 12 },
-    cornersTaken: { BLACK: 1, WHITE: 1 },
     reverseAuctions: { BLACK: 0, WHITE: 0 },
     tieBids: 0,
   };
