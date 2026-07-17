@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Color, GameResult, GameState } from '../core/types';
 import { determineWinner } from '../core/scoring';
 import { encodeGameForUrl } from '../core/serialize';
@@ -94,8 +95,65 @@ export function ResultCard({ state, myColor, result }: Props) {
     }));
   }, [r.winner]);
 
+  // Full-screen end-of-game effect: gold burst on a win (or a decided game
+  // without a viewpoint, e.g. hotseat/spectate), dark wash on a loss.
+  const fxKind = r.winner === 'DRAW' ? null : isLoss ? 'lose' : 'win';
+  const [fxActive, setFxActive] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setFxActive(false), 2700);
+    return () => clearTimeout(t);
+  }, []);
+
+  const fxConfetti = useMemo(() => {
+    if (fxKind !== 'win') return [];
+    return Array.from({ length: 40 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      delay: Math.random() * 0.9,
+      duration: 1.6 + Math.random() * 1.2,
+      color: pickConfettiColor(),
+      size: 6 + Math.random() * 7,
+    }));
+  }, [fxKind]);
+
+  const fxOverlay =
+    fxActive && fxKind && typeof document !== 'undefined'
+      ? createPortal(
+          <div className={`endgame-fx ${fxKind}`} aria-hidden="true">
+            {fxKind === 'win' ? (
+              <>
+                <div className="fx-flash" />
+                <div className="fx-ring" />
+                <div className="fx-confetti">
+                  {fxConfetti.map(c => (
+                    <span
+                      key={c.id}
+                      style={{
+                        left: `${c.left}%`,
+                        background: c.color,
+                        animationDelay: `${c.delay}s`,
+                        animationDuration: `${c.duration}s`,
+                        width: `${c.size}px`,
+                        height: `${c.size * 1.6}px`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="fx-wash" />
+                <div className="fx-vignette" />
+              </>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className="bid-panel result" style={{ position: 'relative' }}>
+      {fxOverlay}
       {r.winner !== 'DRAW' && (
         <div className="confetti" aria-hidden="true">
           {confetti.map(c => (

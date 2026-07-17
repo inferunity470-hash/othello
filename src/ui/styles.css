@@ -1329,6 +1329,132 @@ label.stack {
   }
 }
 
+/* Full-screen end-of-game effect (portaled to <body>, auto-unmounted) */
+.endgame-fx {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1200;
+  overflow: hidden;
+}
+
+.endgame-fx .fx-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(247, 200, 115, 0.55),
+    rgba(245, 176, 65, 0.2) 45%,
+    transparent 75%
+  );
+  animation: fxFlash 1.4s ease-out forwards;
+}
+
+@keyframes fxFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+.endgame-fx .fx-ring {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 30vmax;
+  height: 30vmax;
+  margin: -15vmax 0 0 -15vmax;
+  border-radius: 50%;
+  border: 3px solid rgba(247, 200, 115, 0.9);
+  box-shadow:
+    0 0 34px rgba(247, 200, 115, 0.55),
+    inset 0 0 34px rgba(247, 200, 115, 0.35);
+  opacity: 0;
+  animation: fxRing 1s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes fxRing {
+  0% {
+    transform: scale(0.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(5);
+    opacity: 0;
+  }
+}
+
+.endgame-fx .fx-confetti {
+  position: absolute;
+  inset: 0;
+}
+
+.endgame-fx .fx-confetti span {
+  position: absolute;
+  top: -10vh;
+  border-radius: 2px;
+  animation: fall 2s linear forwards;
+}
+
+.endgame-fx.lose .fx-wash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at 50% 100%,
+    rgba(30, 50, 90, 0.5),
+    transparent 60%
+  );
+  opacity: 0;
+  animation: fxLoseWash 2.4s ease-out forwards;
+}
+
+@keyframes fxLoseWash {
+  0% {
+    opacity: 0;
+    transform: translateY(30%);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+
+.endgame-fx.lose .fx-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(10, 16, 34, 0.65) 100%
+  );
+  opacity: 0;
+  animation: fxLoseVignette 2.4s ease-out forwards;
+}
+
+@keyframes fxLoseVignette {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* Toast */
 .toast {
   position: fixed;
